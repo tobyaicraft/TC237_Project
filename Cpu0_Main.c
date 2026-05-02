@@ -1,15 +1,13 @@
 /**********************************************************************************************************************
  * \file Cpu0_Main.c
- * \brief 1 ms STM tick 기반 간단 스케줄러 (ISR 은 counter 증가만)
+ * \brief TC237 Application Kit - 1ms STM tick 기반 협력형 스케줄러
  *********************************************************************************************************************/
 #include "Ifx_Types.h"
 #include "IfxCpu.h"
-#include "IfxScuWdt.h"
-#include "IfxStm.h"
+#include "DrvIntc.h"
+#include "DrvStm.h"
 #include "AppTask.h"
-
-#define ISR_PRIORITY_STM0   (10U)
-#define SCHED_TICK_MS       (1U)
+#include "Scheduler.h"
 
 /*-----------------------------------------------------------------------------------------------*/
 /* Section 배치 실험용 변수                                                                        */
@@ -36,48 +34,7 @@ void TestFunction(void)
 #pragma protect restore
 #pragma section code restore
 
-IfxCpu_syncEvent            cpuSyncEvent = 0;
-
-static IfxStm_CompareConfig g_stmCfg;
-static volatile uint32      g_1ms_counter = 0;  /* 1 ms 마다 ISR 에서 ++ */
-
-/*-----------------------------------------------------------------------------------------------*/
-/* 1 ms periodic ISR — counter 만 증가                                                            */
-/*-----------------------------------------------------------------------------------------------*/
-IFX_INTERRUPT(stm0Tick_ISR, 0, ISR_PRIORITY_STM0)
-{
-    IfxStm_clearCompareFlag(&MODULE_STM0, g_stmCfg.comparator);
-    IfxStm_increaseCompare(&MODULE_STM0, g_stmCfg.comparator, g_stmCfg.ticks);
-    g_1ms_counter++;
-}
-
-static void initSystemTimer(void)
-{
-    IfxStm_initCompareConfig(&g_stmCfg);
-    g_stmCfg.triggerPriority = ISR_PRIORITY_STM0;
-    g_stmCfg.typeOfService   = IfxSrc_Tos_cpu0;
-    g_stmCfg.ticks           = (uint32)IfxStm_getTicksFromMilliseconds(&MODULE_STM0, SCHED_TICK_MS);
-    IfxStm_initCompare(&MODULE_STM0, &g_stmCfg);
-}
-
-/*-----------------------------------------------------------------------------------------------*/
-/* Scheduler — 1 ms counter 를 modulo 로 분주                                                     */
-/*-----------------------------------------------------------------------------------------------*/
-static void Scheduler(void)
-{
-    static uint32 last_counter = 0;
-    uint32        now = g_1ms_counter;
-
-    if (now == last_counter)
-    {
-        return;
-    }
-    last_counter = now;
-
-    if ((now %   1U) == 0U) AppTask_1ms();
-    if ((now %  10U) == 0U) AppTask_10ms();
-    if ((now % 100U) == 0U) AppTask_100ms();
-}
+IfxCpu_syncEvent cpuSyncEvent = 0;
 
 /*-----------------------------------------------------------------------------------------------*/
 /* main                                                                                          */
@@ -86,11 +43,10 @@ void core0_main(void)
 {
     int Test4 = 4;          /* 지역변수 → stack */
 
-    IfxCpu_enableInterrupts();
+    /* Watchdog 비활성화 */
+    DrvIntc_Init();
 
-    IfxScuWdt_disableCpuWatchdog(IfxScuWdt_getCpuWatchdogPassword());
-    IfxScuWdt_disableSafetyWatchdog(IfxScuWdt_getSafetyWatchdogPassword());
-
+    /* CPU 동기화 */
     IfxCpu_emitEvent(&cpuSyncEvent);
     IfxCpu_waitEvent(&cpuSyncEvent, 1);
 
@@ -100,11 +56,15 @@ void core0_main(void)
     Test4++;
     TestFunction();
 
+    /* 주변장치 초기화 */
     AppTask_Init();
-    initSystemTimer();
+    DrvStm_Init();
+
+    /* 글로벌 인터럽트 Enable — 모든 초기화 완료 후 마지막 수행 */
+    IfxCpu_enableInterrupts();
 
     while (1)
     {
-        Scheduler();
+        Scheduler_Run();
     }
 }
