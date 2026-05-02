@@ -3,307 +3,251 @@
 <head>
 <meta charset="UTF-8">
 <style>
-  body {
-    font-family: '맑은 고딕', 'Malgun Gothic', Arial, sans-serif;
-    font-size: 10pt;
-    color: #000;
-    margin: 30px 40px;
-    line-height: 1.6;
-  }
-  h1 {
-    font-size: 15pt;
-    font-weight: bold;
-    color: #1F4E79;
-    border-bottom: 2px solid #1F4E79;
-    padding-bottom: 5px;
-    margin-top: 0;
-  }
-  h2 {
-    font-size: 12pt;
-    font-weight: bold;
-    color: #2E74B5;
-    border-left: 4px solid #2E74B5;
-    padding-left: 8px;
-    margin-top: 22px;
-    margin-bottom: 8px;
-  }
-  h3 {
-    font-size: 10.5pt;
-    font-weight: bold;
-    color: #222;
-    margin-top: 14px;
-    margin-bottom: 4px;
-  }
-  table {
-    border-collapse: collapse;
-    width: 100%;
-    margin: 6px 0 14px 0;
-    font-size: 9.5pt;
-  }
-  th {
-    background-color: #2E74B5;
-    color: #fff;
-    padding: 5px 8px;
-    border: 1px solid #2E74B5;
-    text-align: center;
-  }
-  td {
-    border: 1px solid #AAAAAA;
-    padding: 4px 8px;
-    vertical-align: middle;
-  }
-  tr:nth-child(even) td { background-color: #EBF3FB; }
-  pre {
-    font-family: Consolas, 'Courier New', monospace;
-    font-size: 8.8pt;
-    background-color: #F4F4F4;
-    border: 1px solid #CCCCCC;
-    padding: 8px 12px;
-    margin: 6px 0 12px 0;
-    white-space: pre;
-    line-height: 1.5;
-  }
-  .box-blue {
-    background-color: #EBF3FB;
-    border: 1px solid #AECDE8;
-    padding: 7px 12px;
-    margin: 8px 0;
-    font-size: 9.5pt;
-  }
-  .box-yellow {
-    background-color: #FFF8E1;
-    border: 1px solid #FFD54F;
-    padding: 7px 12px;
-    margin: 8px 0;
-    font-size: 9.5pt;
-  }
-  .box-green {
-    background-color: #F1F8E9;
-    border: 1px solid #AED581;
-    padding: 7px 12px;
-    margin: 8px 0;
-    font-size: 9.5pt;
-  }
-  hr { border: none; border-top: 1px solid #CCC; margin: 18px 0; }
-  .c-blue  { color: #1565C0; font-weight: bold; }
-  .c-red   { color: #B71C1C; font-weight: bold; }
-  .c-green { color: #2E7D32; font-weight: bold; }
-  .c-gray  { color: #555; }
-  .bold    { font-weight: bold; }
-  .center  { text-align: center; }
-  ul { margin: 4px 0 4px 18px; }
-  li { margin-bottom: 2px; }
+  body        { font-family: "맑은 고딕", Malgun Gothic, sans-serif; font-size: 10pt; color: #000; margin: 40px; }
+  h1          { font-size: 15pt; font-weight: bold; border-bottom: 2px solid #1F3864; padding-bottom: 4px; color: #1F3864; }
+  h2          { font-size: 12pt; font-weight: bold; border-bottom: 1px solid #2E75B6; padding-bottom: 2px; color: #2E75B6; margin-top: 24px; }
+  h3          { font-size: 10.5pt; font-weight: bold; color: #1F3864; margin-top: 16px; margin-bottom: 4px; }
+  table       { border-collapse: collapse; width: 100%; margin: 8px 0 16px 0; font-size: 9.5pt; }
+  th          { background: #2E75B6; color: #fff; padding: 5px 8px; text-align: center; border: 1px solid #1F3864; }
+  td          { padding: 4px 8px; border: 1px solid #BFBFBF; vertical-align: top; }
+  tr:nth-child(even) td { background: #EBF3FB; }
+  code        { font-family: Consolas, monospace; font-size: 9pt; background: #F2F2F2; padding: 1px 4px; border-radius: 2px; }
+  pre         { font-family: Consolas, monospace; font-size: 9pt; background: #F2F2F2; padding: 10px 14px; border-left: 3px solid #2E75B6; margin: 8px 0; line-height: 1.5; }
+  .note       { background: #FFF4CE; border-left: 3px solid #F0A500; padding: 6px 10px; margin: 8px 0; font-size: 9.5pt; }
+  .section    { margin-bottom: 28px; }
+  ul          { margin: 4px 0; padding-left: 20px; }
+  li          { margin: 2px 0; }
 </style>
 </head>
 <body>
 
-<h1>GTM TIM PWM 캡처 추가 설계 문서</h1>
-<p style="font-size:9pt; color:#555;">
-  대상 MCU: <strong>Infineon AURIX TC237</strong> &nbsp;|&nbsp;
-  iLLD: <strong>iLLD_1_20_0</strong> &nbsp;|&nbsp;
-  작성일: <strong>2026-05-02</strong> &nbsp;|&nbsp;
-  작업: <strong>기존 PWM 출력 프로젝트에 TIM 캡처 기능 추가</strong>
-</p>
+<h1>GTM TIM0 Ch0 PWM 입력 캡처 드라이버 설계</h1>
+<p style="color:#555; font-size:9pt;">TC237 Aurix Project &nbsp;|&nbsp; DrvTim.c / DrvTim.h &nbsp;|&nbsp; 작성일: 2026-05-02</p>
 
-<hr>
-
-<!-- ===== 1. 프로젝트 개요 ===== -->
-<h2>1. 프로젝트 개요</h2>
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="section">
+<h2>1. 개요</h2>
 <p>
-  기존에 구축된 TC237 GTM TOM 기반 PWM 출력 프로젝트에
-  <strong>GTM TIM(Timer Input Module) PWM 캡처 드라이버(DrvTim)</strong>를 추가한다.<br>
-  TOM0_Ch0이 출력하는 P00.9 핀의 PWM 신호를 TIM0_Ch0이 동일 핀에서 읽어
-  <strong>Duty Cycle</strong>과 <strong>Period</strong>를 측정한다.
+GTM TIM0 Ch0 을 사용하여 TOM0 Ch0 이 출력하는 100Hz PWM 신호의 <strong>Duty Cycle</strong>과 <strong>Period</strong>를 측정한다.
+TOM 출력 핀(P00.9)에서 점퍼 와이어로 TIM 입력 핀(P00.0)에 신호를 연결하여
+포트 충돌 없이 독립적으로 측정한다.
 </p>
-<div class="box-blue">
-  <span class="bold">신호 흐름:</span><br>
-  TOM0_Ch0 → TOUT18 → <strong>P00.9</strong> (push-pull 출력) → TIN18(INSEL 라우팅) → TIM0_Ch0 → ISR → 측정값 저장
+
+<table>
+  <tr><th>항목</th><th>내용</th></tr>
+  <tr><td>측정 모드</td><td>PWM Measurement (Left-Aligned) — Rising edge 기준 주기 측정</td></tr>
+  <tr><td>측정 대상</td><td>DrvPwm (TOM0_Ch0) 출력, 100Hz / 초기 Duty 50%</td></tr>
+  <tr><td>TIM 모듈</td><td>GTM TIM0, Channel 0</td></tr>
+  <tr><td>입력 핀</td><td>P00.0 (TIN9) — P00.9에서 점퍼 와이어 연결</td></tr>
+  <tr><td>캡처 클럭</td><td>CMU_CLK0 = 100 MHz</td></tr>
+  <tr><td>ISR 우선순위</td><td>5 (DrvGtmTimer ISR 11과 충돌 없음)</td></tr>
+</table>
 </div>
 
-<hr>
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="section">
+<h2>2. 하드웨어 연결</h2>
 
-<!-- ===== 2. 기존 드라이버 현황 ===== -->
-<h2>2. 기존 드라이버 현황 (변경 없음)</h2>
 <table>
-  <tr>
-    <th>파일</th>
-    <th>모듈 / 채널</th>
-    <th>핀</th>
-    <th>클럭</th>
-    <th>기능</th>
-    <th>ISR 우선순위</th>
-  </tr>
-  <tr>
-    <td>DrvPwm.c</td>
-    <td>TOM0_Ch0</td>
-    <td class="bold c-blue">P00.9 (TOUT18)</td>
-    <td>FXCLK2 = 390,625 Hz</td>
-    <td>PWM 출력 (~100 Hz, Duty 가변)</td>
-    <td class="center">—</td>
-  </tr>
-  <tr>
-    <td>DrvGtmTimer.c</td>
-    <td>TOM0_Ch1</td>
-    <td>없음 (출력핀 미사용)</td>
-    <td>FXCLK1 = 6.25 MHz</td>
-    <td>1ms 스케줄러 tick ISR</td>
-    <td class="center bold">11</td>
-  </tr>
+  <tr><th>구분</th><th>핀</th><th>방향</th><th>기능</th><th>비고</th></tr>
+  <tr><td>TOM 출력</td><td><strong>P00.9</strong></td><td>출력</td><td>TOUT18 — 100Hz PWM 신호 출력</td><td>DrvPwm, push-pull 구동</td></tr>
+  <tr><td>TIM 입력</td><td><strong>P00.0</strong></td><td>입력</td><td>TIN9 — PWM 신호 캡처</td><td>No Pull Device, 점퍼 연결</td></tr>
 </table>
 
-<div class="box-yellow">
-  <span class="bold">⚠ 주의 (GTM 초기화 규칙):</span>
-  GTM enable / GCLK 설정은 <code>DrvPwm_Init()</code>에서만 수행한다.
-  DrvGtmTimer, DrvTim 에서는 중복 호출하지 않는다.
+<div class="note">
+  <strong>하드웨어 연결:</strong> P00.9 (TOM 출력) ─── 점퍼 와이어 ───&gt; P00.0 (TIM 입력)
 </div>
 
-<hr>
+<p>
+P00.9는 TOM이 push-pull로 구동하는 출력 전용 핀이다.
+P00.0을 별도 입력 핀으로 지정함으로써 포트 방향 레지스터 충돌을 완전히 회피한다.
+<code>inputPinMode = IfxPort_InputMode_noPullDevice</code>를 사용하며,
+핀이 TOM에 의해 능동 구동되므로 pull 저항은 불필요하다.
+</p>
+</div>
 
-<!-- ===== 3. 시스템 클럭 구성 ===== -->
-<h2>3. 시스템 클럭 구성</h2>
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="section">
+<h2>3. 클럭 체인</h2>
+
 <table>
-  <tr><th>클럭</th><th>계산</th><th>주파수</th><th>용도</th></tr>
-  <tr><td>XTAL</td><td>—</td><td class="center">20 MHz</td><td>PLL 기준</td></tr>
-  <tr><td>fPLL (fSOURCE)</td><td>XTAL × PLL</td><td class="center">200 MHz</td><td>시스템 마스터</td></tr>
-  <tr><td>GTM Module Clock</td><td>fSOURCE / GTMDIV(2)</td><td class="center bold">100 MHz</td><td>GTM 기준, IfxGtm_Cmu_getModuleFrequency() 반환값</td></tr>
-  <tr><td>CMU GCLK</td><td>Module Clock / 1</td><td class="center">100 MHz</td><td>CMU 내부 글로벌 클럭</td></tr>
-  <tr><td>CMU_FXCLK1</td><td>GCLK / 16</td><td class="center">6.25 MHz</td><td>TOM0_Ch1 (1ms 타이머)</td></tr>
-  <tr><td>CMU_FXCLK2</td><td>GCLK / 256</td><td class="center">390,625 Hz</td><td>TOM0_Ch0 (PWM 출력)</td></tr>
-  <tr><td class="bold c-green">CMU_CLK0</td><td>GCLK / (CLK_CNT+1) = GCLK/1</td><td class="center bold c-green">100 MHz</td><td><strong>TIM0_Ch0 캡처 클럭 (신규 추가)</strong></td></tr>
+  <tr><th>단계</th><th>클럭</th><th>주파수</th><th>설정 위치</th></tr>
+  <tr><td>GTM 모듈 클럭</td><td>fSOURCE / GTMDIV</td><td>100 MHz</td><td>DrvPwm_Init()</td></tr>
+  <tr><td>GTM GCLK</td><td>GCLK = fMod</td><td>100 MHz</td><td>DrvPwm_Init()</td></tr>
+  <tr><td>FXCLK2 (TOM용)</td><td>FXCLK2 = GCLK / 256</td><td>390,625 Hz</td><td>DrvPwm_Init()</td></tr>
+  <tr><td><strong>CMU_CLK0 (TIM용)</strong></td><td>CLK0 = GCLK / 1</td><td><strong>100 MHz</strong></td><td>DrvTim_Init()</td></tr>
 </table>
 
-<h3>CLK_EN 레지스터 쓰기 규칙</h3>
-<div class="box-blue">
-  각 2-bit 필드: <code>0b00</code> = 변경없음 &nbsp;|&nbsp; <code>0b01</code> = 비활성화 &nbsp;|&nbsp; <code>0b10</code> = 활성화<br><br>
-  <code>IFXGTM_CMU_CLKEN_CLK0 = 0x00000002</code> 만 쓰면
-  EN_CLK0[1:0] = 0b10(활성화), 나머지 필드 = 0b00(변경없음) → <span class="c-green">FXCLK 영향 없음</span>
+<div class="note">
+  <strong>CLK_EN 레지스터 2-bit 필드 의미:</strong>
+  0b00 = 변경없음 &nbsp;|&nbsp; 0b01 = disable &nbsp;|&nbsp; 0b10 = enable<br>
+  <code>IFXGTM_CMU_CLKEN_CLK0 = 0x00000002</code>는 EN_CLK0 필드만 enable(0b10), 나머지(FXCLK 포함)는 0b00(변경없음). 기존 TOM 클럭에 영향 없음.
 </div>
-<pre>/* DrvPwm_Init() — 기존 */
-IfxGtm_Cmu_enableClocks(gtm, IFXGTM_CMU_CLKEN_FXCLK);          /* 0x00800000 */
 
-/* DrvTim_Init() — 신규 추가 */
-IfxGtm_Cmu_setClkFrequency(gtm, IfxGtm_Cmu_Clk_0, fMod);       /* CLK0 = 100MHz */
-IfxGtm_Cmu_enableClocks(gtm, IFXGTM_CMU_CLKEN_CLK0);            /* 0x00000002, FXCLK 불변 */</pre>
-
-<hr>
-
-<!-- ===== 4. TIM 캡처 설계 ===== -->
-<h2>4. TIM 캡처 드라이버 설계 (DrvTim)</h2>
-
-<h3>4.1 채널 / 핀 / 파라미터</h3>
+<h3>측정 분해능</h3>
 <table>
-  <tr><th>항목</th><th>설정값</th><th>비고</th></tr>
-  <tr><td>TIM 모듈</td><td>TIM0</td><td>—</td></tr>
-  <tr><td>채널</td><td>Ch0 (IfxGtm_Tim_Ch_0)</td><td>TOM0_Ch0 과 동일 채널 번호</td></tr>
-  <tr><td>입력 핀</td><td class="bold c-blue">P00.9 (TIN18)</td><td>IfxGtm_TIM0_0_TIN18_P00_9_IN</td></tr>
-  <tr><td>캡처 클럭</td><td>CMU_CLK0 = 100 MHz</td><td>IfxGtm_Cmu_Clk_0</td></tr>
-  <tr><td>측정 모드</td><td>PWM Measurement</td><td>IfxGtm_Tim_Mode_pwmMeasurement</td></tr>
-  <tr><td>정렬 방식</td><td>Left-Aligned</td><td>Rising Edge = 주기 기준점</td></tr>
-  <tr><td>ISR 제공</td><td>CPU0</td><td>IfxSrc_Tos_cpu0</td></tr>
-  <tr><td>ISR 우선순위</td><td class="bold">5</td><td>DrvGtmTimer(11) 과 충돌 없음</td></tr>
+  <tr><th>항목</th><th>계산</th><th>결과</th></tr>
+  <tr><td>틱 분해능</td><td>1 / 100 MHz</td><td>10 ns / tick</td></tr>
+  <tr><td>100Hz 주기</td><td>1 / 100 Hz</td><td>10 ms = 1,000,000 ticks</td></tr>
+  <tr><td>50% Duty 고 구간</td><td>10 ms × 0.5</td><td>5 ms = 500,000 ticks</td></tr>
+</table>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="section">
+<h2>4. 드라이버 구조</h2>
+
+<h3>4.1 파일 구성</h3>
+<table>
+  <tr><th>파일</th><th>역할</th></tr>
+  <tr><td><code>DrvTim.h</code></td><td>ISR 우선순위 매크로 정의, 공개 API 선언</td></tr>
+  <tr><td><code>DrvTim.c</code></td><td>TIM 초기화, ISR, Duty / Period 읽기 함수 구현</td></tr>
 </table>
 
-<h3>4.2 핀 충돌 방지 방법</h3>
-<div class="box-yellow">
-  <span class="bold">문제:</span> TOM이 P00.9를 <em>출력</em>으로 설정했는데,
-  TIM이 같은 P00.9를 <em>입력</em>으로 재설정하면 TOM 출력이 끊긴다.<br><br>
-  <span class="bold">해결:</span> <code>inputPinMode = IfxPort_InputMode_undefined</code> 사용<br>
-  → <code>IfxGtm_PinMap_setTimTin()</code> 내부의 <code>IfxPort_setPinModeInput()</code> 호출이 건너뜀<br>
-  → GTM INOUTSEL.TIM[0].INSEL 라우팅 레지스터만 설정 (TIN18 선택자 = 1)<br>
-  → P00.9 포트 방향은 TOM의 출력 설정 그대로 유지
-</div>
-<pre>cfg.filter.inputPin     = &IfxGtm_TIM0_0_TIN18_P00_9_IN;
-cfg.filter.inputPinMode = IfxPort_InputMode_undefined;  /* 포트 방향 레지스터 변경 안 함 */</pre>
-
-<div class="box-green">
-  <span class="bold">동작 원리:</span><br>
-  TOM이 P00.9를 push-pull 출력으로 구동 → P00.9 핀 레벨이 결정됨<br>
-  TC237 포트 아키텍처: 출력 모드에서도 입력 버퍼가 살아있어 구동 레벨을 읽을 수 있음<br>
-  GTM INSEL 라우팅이 TIN18 경로를 통해 P00.9 레벨을 TIM으로 전달 → <span class="c-green">외부 점퍼 불필요</span>
-</div>
-
-<h3>4.3 PWM Measurement 동작 (Left-Aligned)</h3>
+<h3>4.2 공개 API</h3>
 <table>
-  <tr><th>레지스터</th><th>캡처 시점</th><th>내용</th><th>드라이버 멤버</th></tr>
-  <tr><td>GPR0 (CNTS)</td><td>Active Edge (Rising)</td><td>직전 High 구간 길이 [ticks]</td><td>pulseLengthTick</td></tr>
-  <tr><td>GPR1 (CNT)</td><td>Active Edge (Rising)</td><td>직전 전체 주기 [ticks]</td><td>periodTick</td></tr>
+  <tr><th>함수</th><th>반환값</th><th>설명</th></tr>
+  <tr><td><code>DrvTim_Init(void)</code></td><td>void</td><td>TIM0_Ch0 초기화, CMU_CLK0 활성화, 핀 설정</td></tr>
+  <tr><td><code>DrvTim_GetDutyPercent(void)</code></td><td>float32 [0~100]</td><td>측정된 Duty Cycle (%)</td></tr>
+  <tr><td><code>DrvTim_GetPeriodSec(void)</code></td><td>float32 [s]</td><td>측정된 PWM 주기 (초)</td></tr>
 </table>
-<pre>/* ISR: 100Hz PWM → 약 10ms 마다 호출 */
-IFX_INTERRUPT(DrvTim_ISR, 0, DRVTIM_ISR_PRIORITY)
+
+<h3>4.3 초기화 코드</h3>
+<pre>void DrvTim_Init(void)
 {
-    IfxGtm_Tim_In_onIsr(&s_tim);   /* GPR0/GPR1 래치 → pulseLengthTick / periodTick 갱신 */
-}
+    Ifx_GTM *gtm = &amp;MODULE_GTM;
 
-/* 측정값 조회 */
-float32 duty   = IfxGtm_Tim_In_getDutyPercent(&s_tim, &coherent);
-float32 period = IfxGtm_Tim_In_getPeriodSecond(&s_tim);</pre>
+    /* CMU_CLK0 = 100 MHz 활성화 */
+    float32 fMod = IfxGtm_Cmu_getModuleFrequency(gtm);
+    IfxGtm_Cmu_setClkFrequency(gtm, IfxGtm_Cmu_Clk_0, fMod);
+    IfxGtm_Cmu_enableClocks(gtm, IFXGTM_CMU_CLKEN_CLK0);
 
-<h3>4.4 예상 측정값</h3>
-<table>
-  <tr><th>조건</th><th>periodTick</th><th>pulseLengthTick</th><th>Duty (%)</th><th>Period (s)</th></tr>
-  <tr><td>g_pwmDuty = 25%</td><td class="center">~1,000,000</td><td class="center">~250,000</td><td class="center bold">25.0</td><td class="center bold">0.010</td></tr>
-  <tr><td>g_pwmDuty = 50%</td><td class="center">~1,000,000</td><td class="center">~500,000</td><td class="center bold">50.0</td><td class="center bold">0.010</td></tr>
-  <tr><td>g_pwmDuty = 75%</td><td class="center">~1,000,000</td><td class="center">~750,000</td><td class="center bold">75.0</td><td class="center bold">0.010</td></tr>
-</table>
-<p class="c-gray" style="font-size:9pt;">* CLK0 = 100MHz 기준. 실제 측정값은 GTMDIV 설정에 따라 비례 변동.</p>
+    IfxGtm_Tim_In_Config cfg;
+    IfxGtm_Tim_In_initConfig(&amp;cfg, gtm);
 
-<hr>
+    cfg.timIndex            = IfxGtm_Tim_0;
+    cfg.channelIndex        = IfxGtm_Tim_Ch_0;
+    cfg.irqMode             = IfxGtm_IrqMode_pulseNotify;
+    cfg.isrProvider         = IfxSrc_Tos_cpu0;
+    cfg.isrPriority         = DRVTIM_ISR_PRIORITY;      /* 5 */
 
-<!-- ===== 5. 소프트웨어 구성 ===== -->
-<h2>5. 소프트웨어 파일 구성</h2>
-<table>
-  <tr><th>파일</th><th>상태</th><th>역할</th></tr>
-  <tr><td>Cpu0_Main.c</td><td class="c-blue bold">수정</td><td>#include "DrvTim.h" 추가, DrvTim_Init() 호출 추가</td></tr>
-  <tr><td>DrvTim.h</td><td class="c-green bold">신규</td><td>ISR 우선순위 정의, DrvTim API 선언</td></tr>
-  <tr><td>DrvTim.c</td><td class="c-green bold">신규</td><td>CLK0 활성화, TIM0_Ch0 초기화, ISR 정의</td></tr>
-  <tr><td>DrvPwm.h / .c</td><td class="c-gray">변경없음</td><td>TOM0_Ch0 PWM 출력 (P00.9)</td></tr>
-  <tr><td>DrvGtmTimer.h / .c</td><td class="c-gray">변경없음</td><td>TOM0_Ch1 1ms 타이머 ISR</td></tr>
-  <tr><td>DrvIntc / DrvDio / DrvAdc / Scheduler</td><td class="c-gray">변경없음</td><td>기존 기능 유지</td></tr>
-</table>
+    cfg.capture.clock       = IfxGtm_Cmu_Clk_0;         /* 100 MHz */
+    cfg.capture.irqOnNewVal = TRUE;
+    cfg.capture.mode        = Ifx_Pwm_Mode_leftAligned;
 
-<h3>초기화 순서 (Cpu0_Main.c)</h3>
-<pre>void core0_main(void)
-{
-    DrvIntc_Init();       /* WDT 비활성화 */
-    DrvDio_Init();
-    DrvAdc_Init();
-    DrvPwm_Init();        /* GTM enable, GCLK=100MHz, FXCLK enable, TOM0_Ch0 PWM 시작 */
-    DrvGtmTimer_Init();   /* TOM0_Ch1 1ms 타이머 (FXCLK 이미 활성화됨) */
-    DrvTim_Init();        /* CLK0 추가 활성화, TIM0_Ch0 캡처 초기화       ← 신규 */
+    cfg.filter.inputPin     = &amp;IfxGtm_TIM0_0_TIN9_P00_0_IN;   /* P00.0 */
+    cfg.filter.inputPinMode = IfxPort_InputMode_noPullDevice;
 
-    IfxCpu_enableInterrupts();
+    cfg.mode                = IfxGtm_Tim_Mode_pwmMeasurement;
 
-    while (1) { Scheduler_Run(); }
+    IfxGtm_Tim_In_init(&amp;s_tim, &amp;cfg);
 }</pre>
 
-<hr>
+<h3>4.4 ISR</h3>
+<pre>IFX_INTERRUPT(DrvTim_ISR, 0, DRVTIM_ISR_PRIORITY)
+{
+    IfxGtm_Tim_In_onIsr(&amp;s_tim);
+}</pre>
+<div class="note">
+  <code>IFX_INTERRUPT</code> 매크로의 세 번째 인수(우선순위)는 <strong>괄호 없이</strong> 정수 리터럴 또는 매크로로 지정해야 한다.
+  괄호 사용 시 어셈블러 섹션 이름 생성 오류 발생.
+</div>
+</div>
 
-<!-- ===== 6. ISR 우선순위 맵 ===== -->
-<h2>6. ISR 우선순위 맵</h2>
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="section">
+<h2>5. 스케줄러 통합</h2>
+
+<h3>5.1 초기화 순서 (Cpu0_Main.c)</h3>
+<pre>DrvIntc_Init();
+DrvDio_Init();
+DrvAdc_Init();
+DrvPwm_Init();       /* GTM enable, GCLK, FXCLK 설정 — 반드시 먼저 */
+DrvGtmTimer_Init();  /* TOM0_Ch1, 1ms tick */
+DrvTim_Init();       /* TIM0_Ch0, CMU_CLK0 활성화 */
+IfxCpu_enableInterrupts();</pre>
+
+<h3>5.2 측정값 읽기 (AppTask.c — 10ms 주기)</h3>
+<pre>/* AppTask.c */
+float32 g_timDutyPercent = 0.0f;   /* AppTask.h 에 extern 선언 */
+float32 g_timPeriodSec   = 0.0f;
+
+void AppTask_10ms(void)
+{
+    DrvAdc_Run();
+    DrvPwm_SetDuty(g_pwmDuty);
+
+    g_timDutyPercent = DrvTim_GetDutyPercent();   /* 0.0 ~ 100.0 % */
+    g_timPeriodSec   = DrvTim_GetPeriodSec();     /* 단위: 초 */
+}</pre>
+
+<h3>5.3 ISR 우선순위 할당</h3>
 <table>
-  <tr><th>우선순위</th><th>ISR 이름</th><th>소스</th><th>주기</th></tr>
-  <tr><td class="center bold">11</td><td>gtmTimer_ISR</td><td>TOM0_Ch1 CCU0</td><td>1 ms</td></tr>
-  <tr><td class="center bold c-green">5</td><td>DrvTim_ISR</td><td>TIM0_Ch0 NewVal</td><td>~10 ms (100 Hz)</td></tr>
+  <tr><th>드라이버</th><th>ISR 함수</th><th>우선순위</th><th>발생 주기</th></tr>
+  <tr><td>DrvGtmTimer</td><td>gtmTimer_ISR</td><td>11</td><td>1ms (1kHz)</td></tr>
+  <tr><td>DrvTim</td><td>DrvTim_ISR</td><td>5</td><td>10ms (100Hz, PWM 주기마다)</td></tr>
 </table>
+</div>
 
-<hr>
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="section">
+<h2>6. 전체 신호 흐름</h2>
 
-<!-- ===== 7. 검증 기준 ===== -->
-<h2>7. 검증 기준</h2>
+<pre>
+  TOM0_Ch0 (DrvPwm)
+  FXCLK2=390,625Hz / 3906 ticks = 100Hz PWM
+        |
+        v
+  P00.9 (TOUT18) ──── 점퍼 와이어 ────&gt; P00.0 (TIN9)
+                                              |
+                                              v
+                                       TIM0_Ch0 (DrvTim)
+                                       CMU_CLK0 = 100 MHz
+                                       PWM Measurement
+                                              |
+                               +--------------+--------------+
+                               v                             v
+                       Rising Edge 캡처               Falling Edge 캡처
+                       --&gt; Period 측정                --&gt; High Time 측정
+                               |                             |
+                               +-------------+---------------+
+                                             |
+                                    ISR (priority 5, 10ms마다)
+                                    IfxGtm_Tim_In_onIsr()
+                                             |
+                                             v   AppTask_10ms() 10ms마다
+                             g_timDutyPercent = DrvTim_GetDutyPercent()
+                             g_timPeriodSec   = DrvTim_GetPeriodSec()
+</pre>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="section">
+<h2>7. 핵심 설계 포인트</h2>
+
 <table>
-  <tr><th>항목</th><th>확인 방법</th><th>목표값</th><th>허용 오차</th></tr>
-  <tr><td>DrvTim_GetPeriodSec()</td><td>ADS 디버거 Watch 창</td><td>0.0100 s</td><td>± 0.0001 s</td></tr>
-  <tr><td>DrvTim_GetDutyPercent()</td><td>ADS 디버거 Watch 창</td><td>g_pwmDuty [%] 와 일치</td><td>± 1 %</td></tr>
-  <tr><td>DrvPwm_SetDuty() 반응</td><td>Duty 변경 후 측정값 확인</td><td>즉시 반영 (다음 주기)</td><td>—</td></tr>
-  <tr><td>1ms 타이머 정확도</td><td>g_1ms_counter 증가 속도</td><td>1000 count/sec</td><td>± 1 count</td></tr>
+  <tr><th>항목</th><th>내용</th></tr>
+  <tr>
+    <td>핀 분리</td>
+    <td>TOM 출력(P00.9)과 TIM 입력(P00.0)을 다른 핀으로 분리. 포트 방향 레지스터 충돌 원천 차단, <code>inputPinMode_undefined</code> 트릭 불필요</td>
+  </tr>
+  <tr>
+    <td>CLK0 독립 활성화</td>
+    <td><code>IFXGTM_CMU_CLKEN_CLK0 = 0x00000002</code> — EN_CLK0 필드만 enable, FXCLK 필드는 변경없음(0b00). 기존 TOM 동작에 영향 없음</td>
+  </tr>
+  <tr>
+    <td>초기화 순서</td>
+    <td>DrvPwm_Init()이 GTM enable + GCLK + FXCLK를 담당. DrvTim_Init()은 CMU_CLK0만 추가. 순서 바뀌면 GTM 비활성 상태에서 CMU 설정 시도하여 오동작 가능</td>
+  </tr>
+  <tr>
+    <td>coherent 읽기</td>
+    <td>iLLD getDutyPercent() 내부의 coherent 플래그로 ISR 갱신 중 mid-update 읽기 방지. 현재 플래그 값은 무시하고 반환값만 사용</td>
+  </tr>
+  <tr>
+    <td>ISR 빈도 일치</td>
+    <td>100Hz PWM → TIM ISR 10ms마다 발생. AppTask_10ms 호출 주기와 동일하므로 매 태스크 사이클에서 최신 측정값 획득</td>
+  </tr>
 </table>
-
-<div class="box-green">
-  <span class="bold">빠른 검증 절차:</span><br>
-  ① ADS에서 Break → Watch 창에 <code>DrvTim_GetPeriodSec()</code>, <code>DrvTim_GetDutyPercent()</code> 추가<br>
-  ② <code>g_pwmDuty = 25</code> 입력 후 Resume → Duty ≈ 25.0% 확인<br>
-  ③ <code>g_pwmDuty = 75</code> 입력 후 Resume → Duty ≈ 75.0% 확인<br>
-  ④ Period 값이 0.010s (10ms) 에서 변하지 않음 확인
 </div>
 
 </body>

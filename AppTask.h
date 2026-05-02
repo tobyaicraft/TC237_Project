@@ -7,6 +7,9 @@
 
 #include "Ifx_Types.h"
 
+extern float32 g_timDutyPercent;   /* TIM 측정 Duty [%] */
+extern float32 g_timPeriodSec;     /* TIM 측정 주기 [s] */
+
 /** \brief 1ms periodic task */
 void AppTask_1ms(void);
 

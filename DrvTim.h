@@ -2,7 +2,7 @@
  * \file DrvTim.h
  * \brief GTM TIM0 Ch0 PWM 입력 캡처 드라이버
  *
- * Input  : P00.9 (TIN18) — TOM0_Ch0 출력과 동일 핀, INSEL 라우팅만 설정
+ * Input  : P00.0 (TIN9) — P00.9(TOM 출력)에서 점퍼 와이어로 연결
  * Mode   : PWM Measurement (Left-Aligned)
  * Clock  : CMU_CLK0 = GCLK(100MHz) / 1 = 100 MHz
  *

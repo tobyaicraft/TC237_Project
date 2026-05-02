@@ -6,10 +6,9 @@
  *   GTM GCLK  = 100 MHz  (DrvPwm_Init() 에서 설정 완료)
  *   CMU_CLK0  = GCLK / 1 = 100 MHz  (본 드라이버에서 추가 활성화)
  *
- * P00.9 포트 모드 충돌 방지:
- *   - inputPinMode = IfxPort_InputMode_undefined 사용
- *   - INSEL 라우팅만 설정, 포트 방향 레지스터는 변경하지 않음
- *   - TOM 이 P00.9 를 출력으로 구동 → TIM 이 동일 핀 레벨을 TIN18 경로로 읽음
+ * 입력 핀: P00.0 (TIN9)
+ *   - P00.9(TOM PWM 출력)에서 점퍼 와이어로 P00.0 에 연결
+ *   - 전용 입력 핀이므로 포트 충돌 없음, 일반 inputPinMode 사용
  *********************************************************************************************************************/
 #include "DrvTim.h"
 #include "Compilers.h"
@@ -60,10 +59,9 @@ void DrvTim_Init(void)
     cfg.capture.irqOnNewVal   = TRUE;
     cfg.capture.mode          = Ifx_Pwm_Mode_leftAligned;  /* Rising edge = 주기 기준 */
 
-    /* P00.9 핀 방향 변경 없이 INSEL 라우팅만 설정
-     * → inputPinMode = IfxPort_InputMode_undefined 이면 setPinModeInput() 호출 건너뜀 */
-    cfg.filter.inputPin       = &IfxGtm_TIM0_0_TIN18_P00_9_IN;
-    cfg.filter.inputPinMode   = IfxPort_InputMode_undefined;
+    /* P00.0 핀: P00.9(TOM 출력)에서 점퍼 와이어로 연결된 전용 입력 */
+    cfg.filter.inputPin       = &IfxGtm_TIM0_0_TIN9_P00_0_IN;
+    cfg.filter.inputPinMode   = IfxPort_InputMode_noPullDevice;
 
     cfg.mode                  = IfxGtm_Tim_Mode_pwmMeasurement;
 
