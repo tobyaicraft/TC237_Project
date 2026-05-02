@@ -19,6 +19,7 @@
 void    DrvUart_Init(void);
 void    DrvUart_SendByte(uint8 data);
 void    DrvUart_SendString(const char *str);
+void    DrvUart_SendUint16(uint16 value);   /* 12-bit ADC 값 → "XXXX\n" ASCII 송신 */
 boolean DrvUart_ReceiveByte(uint8 *data);
 
 #endif /* DRVUART_H */

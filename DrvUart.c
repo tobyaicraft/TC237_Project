@@ -95,6 +95,24 @@ void DrvUart_SendString(const char *str)
     }
 }
 
+void DrvUart_SendUint16(uint16 value)
+{
+    /* 12-bit ADC (0~4095) → 항상 4자리 + '\n' (예: "0123\n")
+     * 고정 길이 포맷으로 Python 파싱 용이 */
+    uint8 buf[5];
+    buf[0] = (uint8)('0' + (value / 1000u));
+    buf[1] = (uint8)('0' + (value % 1000u / 100u));
+    buf[2] = (uint8)('0' + (value % 100u  / 10u));
+    buf[3] = (uint8)('0' + (value % 10u));
+    buf[4] = (uint8)'\n';
+
+    uint8 i;
+    for (i = 0u; i < 5u; i++)
+    {
+        IfxAsclin_Asc_blockingWrite(&s_asc, buf[i]);
+    }
+}
+
 boolean DrvUart_ReceiveByte(uint8 *data)
 {
     Ifx_SizeT count = 1;

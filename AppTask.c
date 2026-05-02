@@ -40,6 +40,9 @@ void AppTask_10ms(void)
 
     g_timDutyPercent = DrvTim_GetDutyPercent();
     g_timPeriodSec   = DrvTim_GetPeriodSec();
+
+    /* AN0 ADC 값 UART 전송 → Python 오실로스코프 */
+    DrvUart_SendUint16(DrvAdc_GetResult(0));
 }
 
 /******************************************************************************/
