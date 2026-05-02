@@ -7,9 +7,6 @@
 
 #include "Ifx_Types.h"
 
-/** \brief Initialize all application-level peripherals (called once before scheduler starts) */
-void AppTask_Init(void);
-
 /** \brief 1ms periodic task */
 void AppTask_1ms(void);
 
