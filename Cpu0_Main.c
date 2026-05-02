@@ -10,6 +10,7 @@
 #include "DrvPwm.h"
 #include "DrvGtmTimer.h"
 #include "DrvTim.h"
+#include "DrvUart.h"
 #include "Scheduler.h"
 
 /*-----------------------------------------------------------------------------------------------*/
@@ -24,9 +25,14 @@ void core0_main(void)
     DrvPwm_Init();
     DrvGtmTimer_Init();
     DrvTim_Init();
+    DrvUart_Init();
 
     /* 글로벌 인터럽트 Enable — 모든 초기화 완료 후 마지막 수행 */
     IfxCpu_enableInterrupts();
+
+    DrvUart_SendString("=== TC237 UART Echo Test ===\r\n");
+    DrvUart_SendString("Send any character -> TC237 echoes it back\r\n");
+    DrvUart_SendString("Ready.\r\n\r\n");
 
     while (1)
     {
