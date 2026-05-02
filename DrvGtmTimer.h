@@ -1,37 +1,28 @@
 /**********************************************************************************************************************
- * \file AppTask.c
- * \brief Application task implementations
+ * \file DrvGtmTimer.h
+ * \brief GTM TOM0 Ch1 기반 1ms 스케줄러 tick 드라이버
  *
- * Task_1ms   : reserved for future fast-cycle processing
- * Task_10ms  : ADC Group0 Ch0/Ch1/Ch2 scan
- * Task_100ms : LED heartbeat toggle
+ * - FXCLK1 = 200MHz / 16 = 12,500,000 Hz, period = 12,500 ticks → 정확히 1ms
+ * - GTM hard-suspend: 디버거 break 시 g_1ms_counter 증가 정지
  *********************************************************************************************************************/
-#include "AppTask.h"
-#include "DrvDio.h"
-#include "DrvAdc.h"
-#include "DrvPwm.h"
+#ifndef DRVGTMTIMER_H
+#define DRVGTMTIMER_H
+
+#include "Ifx_Types.h"
 
 /******************************************************************************/
-/*                           1ms Task                                         */
+/*                           Configuration                                    */
 /******************************************************************************/
-void AppTask_1ms(void)
-{
-    /* Reserved - fast-cycle processing */
-}
+#define DRVGTMTIMER_ISR_PRIORITY    11U
 
 /******************************************************************************/
-/*                           10ms Task                                        */
+/*                           Global Variables                                 */
 /******************************************************************************/
-void AppTask_10ms(void)
-{
-    DrvAdc_Run();
-    DrvPwm_SetDuty(g_pwmDuty);
-}
+extern volatile uint32 g_1ms_counter;   /* 1ms ISR 에서 증가 */
 
 /******************************************************************************/
-/*                           100ms Task                                       */
+/*                           Function Prototypes                              */
 /******************************************************************************/
-void AppTask_100ms(void)
-{
-    DrvDio_ToggleLed0();
-}
+void DrvGtmTimer_Init(void);
+
+#endif /* DRVGTMTIMER_H */

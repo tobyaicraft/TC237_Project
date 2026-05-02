@@ -7,7 +7,8 @@
 #include "DrvIntc.h"
 #include "DrvDio.h"
 #include "DrvAdc.h"
-#include "DrvStm.h"
+#include "DrvPwm.h"
+#include "DrvGtmTimer.h"
 #include "Scheduler.h"
 
 /*-----------------------------------------------------------------------------------------------*/
@@ -19,7 +20,8 @@ void core0_main(void)
     DrvIntc_Init();
     DrvDio_Init();
     DrvAdc_Init();
-    DrvStm_Init();
+    DrvPwm_Init();
+    DrvGtmTimer_Init();
 
     /* 글로벌 인터럽트 Enable — 모든 초기화 완료 후 마지막 수행 */
     IfxCpu_enableInterrupts();

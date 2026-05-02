@@ -12,7 +12,6 @@
 /*                           Module Variables                                 */
 /******************************************************************************/
 static IfxStm_CompareConfig s_stmCfg;
-volatile uint32             g_1ms_counter = 0u;
 
 /******************************************************************************/
 /*                           ISR (1ms tick)                                   */
@@ -21,7 +20,6 @@ IFX_INTERRUPT(stm0Tick_ISR, 0, DRVSTM_ISR_PRIORITY)
 {
     IfxStm_clearCompareFlag(&MODULE_STM0, s_stmCfg.comparator);
     IfxStm_increaseCompare(&MODULE_STM0, s_stmCfg.comparator, s_stmCfg.ticks);
-    g_1ms_counter++;
 }
 
 /******************************************************************************/
