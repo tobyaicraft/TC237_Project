@@ -1,0 +1,10 @@
+# Build output
+TriCore Debug (TASKING)/
+
+# Claude Code internal files
+memory/
+.claude/
+
+# Windows
+Thumbs.db
+Desktop.ini
