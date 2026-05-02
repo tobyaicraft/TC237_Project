@@ -12,6 +12,7 @@
 #include "DrvPwm.h"
 #include "DrvTim.h"
 #include "DrvUart.h"
+#include "DrvCan.h"
 
 float32 g_timDutyPercent = 0.0f;
 float32 g_timPeriodSec   = 0.0f;
@@ -41,8 +42,8 @@ void AppTask_10ms(void)
     g_timDutyPercent = DrvTim_GetDutyPercent();
     g_timPeriodSec   = DrvTim_GetPeriodSec();
 
-    /* AN0 ADC 값 UART 전송 → Python 오실로스코프 */
-    DrvUart_SendUint16(DrvAdc_GetResult(0));
+    /* AN0 ADC 값 CAN 송신 → TC237_Project_CAN 보드 (100 Hz) */
+    DrvCan_SendUint16(DrvAdc_GetResult(0));
 }
 
 /******************************************************************************/

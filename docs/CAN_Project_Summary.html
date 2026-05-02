@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>TC237 CAN 통신 프로젝트 개발 요약</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Malgun Gothic', 'Segoe UI', sans-serif;
+    font-size: 11pt;
+    color: #1a1a1a;
+    background: #fff;
+    padding: 40px 60px;
+    max-width: 960px;
+    margin: auto;
+  }
+  h1 {
+    font-size: 20pt;
+    color: #003366;
+    border-bottom: 3px solid #003366;
+    padding-bottom: 8px;
+    margin-bottom: 6px;
+  }
+  .subtitle {
+    font-size: 10pt;
+    color: #666;
+    margin-bottom: 30px;
+  }
+  h2 {
+    font-size: 14pt;
+    color: #003366;
+    background: #e8f0fa;
+    padding: 6px 12px;
+    border-left: 5px solid #003366;
+    margin: 28px 0 12px 0;
+  }
+  h3 {
+    font-size: 11pt;
+    color: #004488;
+    margin: 16px 0 6px 0;
+    border-bottom: 1px dashed #aac;
+    padding-bottom: 3px;
+  }
+  p { margin-bottom: 8px; line-height: 1.7; }
+  ul, ol { padding-left: 22px; margin-bottom: 10px; }
+  li { margin-bottom: 4px; line-height: 1.7; }
+
+  /* 시스템 구성도 */
+  .arch-box {
+    background: #f5f8ff;
+    border: 1px solid #b0c4e8;
+    border-radius: 6px;
+    padding: 20px 24px;
+    margin: 12px 0 20px 0;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 10pt;
+    line-height: 1.9;
+    color: #1a1a1a;
+  }
+
+  /* 테이블 */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0 16px 0;
+    font-size: 10.5pt;
+  }
+  th {
+    background: #003366;
+    color: #fff;
+    padding: 7px 12px;
+    text-align: left;
+  }
+  td {
+    padding: 6px 12px;
+    border: 1px solid #ccd;
+  }
+  tr:nth-child(even) td { background: #f2f5fa; }
+  tr:hover td { background: #e6eeff; }
+
+  /* 코드 블록 */
+  pre {
+    background: #1e1e2e;
+    color: #cdd6f4;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 9.5pt;
+    line-height: 1.6;
+    padding: 14px 18px;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 8px 0 14px 0;
+  }
+  .kw  { color: #89b4fa; }   /* keyword */
+  .cm  { color: #6c7086; }   /* comment */
+  .str { color: #a6e3a1; }   /* string */
+  .num { color: #fab387; }   /* number */
+  .fn  { color: #cba6f7; }   /* function */
+  .pp  { color: #f38ba8; }   /* preprocessor */
+
+  /* 배지 */
+  .badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 9pt;
+    font-weight: bold;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+  .badge-main { background: #003366; color: #fff; }
+  .badge-sub  { background: #5a7a3a; color: #fff; }
+  .badge-fix  { background: #c0392b; color: #fff; }
+  .badge-new  { background: #1a7a5a; color: #fff; }
+  .badge-mod  { background: #7a5a1a; color: #fff; }
+
+  /* 경고/노트 박스 */
+  .note {
+    background: #fffbe6;
+    border-left: 4px solid #f0a500;
+    padding: 10px 14px;
+    margin: 10px 0;
+    border-radius: 0 4px 4px 0;
+    font-size: 10pt;
+  }
+  .fix-box {
+    background: #fff0f0;
+    border-left: 4px solid #c0392b;
+    padding: 10px 14px;
+    margin: 10px 0;
+    border-radius: 0 4px 4px 0;
+    font-size: 10pt;
+  }
+
+  /* 핀맵 ASCII */
+  .pinmap {
+    background: #f0f0f8;
+    border: 1px solid #b0b8d8;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 10pt;
+    padding: 14px 20px;
+    border-radius: 6px;
+    line-height: 1.8;
+    margin: 10px 0;
+    color: #1a1a1a;
+  }
+
+  .section-divider {
+    border: none;
+    border-top: 2px solid #e0e8f5;
+    margin: 30px 0;
+  }
+
+  .footer {
+    margin-top: 40px;
+    padding-top: 12px;
+    border-top: 1px solid #ccc;
+    font-size: 9pt;
+    color: #888;
+    text-align: right;
+  }
+</style>
+</head>
+<body>
+
+<h1>TC237 CAN 통신 프로젝트 개발 요약</h1>
+<div class="subtitle">Infineon AURIX TC237 · TASKING Compiler · iLLD MultiCAN+ API &nbsp;|&nbsp; 작성일: 2026-05-02</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>1. 프로젝트 개요</h2>
+
+<p>AURIX TC237 보드 2대를 CAN 버스로 연결하여 ADC 측정값을 실시간으로 전송하는 시스템을 구현한다.<br>
+<strong>Main 보드</strong>는 ADC AN0 채널을 10ms 주기로 샘플링 후 CAN으로 전송하고,
+<strong>Sub 보드</strong>는 이를 수신하여 UART로 PC에 출력한다.</p>
+
+<div class="arch-box">
+┌─────────────────────────────────┐         ┌─────────────────────────────────┐<br>
+│      TC237_Project (Main)       │         │    TC237_Project_CAN (Sub)      │<br>
+│                                 │         │                                 │<br>
+│  AN0 ADC (0~3.3V)               │         │             UART TX (P15.2)     │<br>
+│     ↓ 12-bit (0~4095)           │         │                ↓                │<br>
+│  DrvAdc_GetResult(0)            │   CAN   │  DrvCan_ReceiveUint16()         │<br>
+│     ↓                           │ 500kbps │     ↓                           │<br>
+│  DrvCan_SendUint16()   P20.8 ───┼─────────┼─── P20.7  "XXXX\n" → PC UART   │<br>
+│  (10ms 주기, ID=0x100)          │         │  (ID=0x100, DLC=2)              │<br>
+└─────────────────────────────────┘         └─────────────────────────────────┘<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+TLE7250GVIO                             TLE7250GVIO<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+X202 CANH ──────────────────────────── X202 CANH<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+X202 CANL ──────────────────────────── X202 CANL
+</div>
+
+<table>
+  <tr><th>항목</th><th>Main Board (TC237_Project)</th><th>Sub Board (TC237_Project_CAN)</th></tr>
+  <tr><td>역할</td><td>ADC 측정 → CAN TX 송신</td><td>CAN RX 수신 → UART 출력</td></tr>
+  <tr><td>CAN 핀</td><td>TX: P20.8 / RX: P20.7</td><td>TX: P20.8 / RX: P20.7</td></tr>
+  <tr><td>CAN 설정</td><td>500 kbps, ID=0x100, DLC=2</td><td>500 kbps, ID=0x100, DLC=2</td></tr>
+  <tr><td>UART 핀</td><td>P15.2(TX) / P15.3(RX)</td><td>P15.2(TX) / P15.3(RX)</td></tr>
+  <tr><td>UART 설정</td><td>115200 bps, 8-N-1</td><td>115200 bps, 8-N-1</td></tr>
+  <tr><td>스케줄러</td><td>GTM TOM0 Ch1 → 1ms tick</td><td>GTM TOM0 Ch1 → 1ms tick</td></tr>
+  <tr><td>CAN 트랜시버</td><td>TLE7250GVIO (온보드)</td><td>TLE7250GVIO (온보드)</td></tr>
+</table>
+
+<hr class="section-divider">
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>2. 하드웨어 연결</h2>
+
+<h3>2-1. CAN 버스 연결 (X202 IDC10 커넥터)</h3>
+<table>
+  <tr><th>Main 보드 X202</th><th>신호</th><th>Sub 보드 X202</th></tr>
+  <tr><td>pin 2</td><td>CANH ←→ CANH</td><td>pin 2</td></tr>
+  <tr><td>pin 4</td><td>CANL ←→ CANL</td><td>pin 4</td></tr>
+  <tr><td>pin 6 또는 8</td><td>GND ←→ GND</td><td>pin 6 또는 8</td></tr>
+</table>
+<div class="note">종단저항(120 Ω)은 버스 양 끝단 보드에 각각 CANH-CANL 사이에 삽입한다. 보드 내 터미네이션 점퍼가 있다면 활성화한다.</div>
+
+<h3>2-2. Sub 보드 UART 연결 (PC USB-TTL 어댑터)</h3>
+<table>
+  <tr><th>TC237 핀</th><th>X102 커넥터</th><th>USB-TTL 어댑터</th></tr>
+  <tr><td><strong>P15.2 (TX)</strong></td><td>pin 31</td><td>RX</td></tr>
+  <tr><td><strong>P15.3 (RX)</strong></td><td>pin 32</td><td>TX</td></tr>
+  <tr><td>GND</td><td>pin 3 / 4</td><td>GND</td></tr>
+</table>
+
+<h3>2-3. 로직 애널라이저 프로브 위치 (MCU → 트랜시버 구간)</h3>
+<div class="pinmap">
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;TLE7250GVIO (SO-8)<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;┌──────────┐<br>
+TXD ─┤<strong>1 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;8</strong>├─ CANL<br>
+GND ─┤2 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;7├─ CANH<br>
+VCC ─┤3 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;6├─ WAKE/INH<br>
+RXD ─┤4 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;5├─ VIO<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└──────────┘<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↑<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<strong>1번 핀 (TXD) 프로브</strong> ← MCU P20.8 신호 (3.3V 싱글엔디드)<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<strong>2번 핀 (GND) 클립</strong>
+</div>
+<table>
+  <tr><th>설정 항목</th><th>값</th></tr>
+  <tr><td>프로토콜</td><td>CAN</td></tr>
+  <tr><td>Baudrate</td><td>500 kbps</td></tr>
+  <tr><td>신호 레벨</td><td>3.3 V (싱글엔디드)</td></tr>
+  <tr><td>트리거</td><td>CAN ID = 0x100</td></tr>
+  <tr><td>예상 주기</td><td>10 ms (100 Hz)</td></tr>
+</table>
+
+<hr class="section-divider">
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>3. 소프트웨어 구조</h2>
+
+<h3>3-1. Main 보드 파일 목록</h3>
+<table>
+  <tr><th>파일</th><th>구분</th><th>변경 내용</th></tr>
+  <tr><td>DrvCan.h / DrvCan.c</td><td><span class="badge badge-new">NEW</span></td><td>MultiCAN Node0 TX 드라이버, ID=0x100, DLC=2, 500kbps</td></tr>
+  <tr><td>AppTask.c</td><td><span class="badge badge-mod">MOD</span></td><td>10ms 태스크: DrvAdc_GetResult(0) → DrvCan_SendUint16()</td></tr>
+  <tr><td>Cpu0_Main.c</td><td><span class="badge badge-mod">MOD</span></td><td>DrvCan_Init() 추가, 시작 메시지 변경</td></tr>
+</table>
+
+<h3>3-2. Sub 보드 파일 목록</h3>
+<table>
+  <tr><th>파일</th><th>구분</th><th>내용</th></tr>
+  <tr><td>DrvCan.h / DrvCan.c</td><td><span class="badge badge-new">NEW</span></td><td>MultiCAN Node0 RX 드라이버, ISR 수신, ID=0x100 필터</td></tr>
+  <tr><td>DrvUart.h / DrvUart.c</td><td><span class="badge badge-new">NEW</span></td><td>ASCLIN0, P15.2/P15.3, 115200bps, SW FIFO TX256/RX64</td></tr>
+  <tr><td>DrvGtmTimer.h / DrvGtmTimer.c</td><td><span class="badge badge-new">NEW</span></td><td>GTM TOM0 Ch1 기반 1ms tick, FXCLK Enable 포함</td></tr>
+  <tr><td>Scheduler.h / Scheduler.c</td><td><span class="badge badge-new">NEW</span></td><td>1ms/10ms/100ms 협력형 스케줄러</td></tr>
+  <tr><td>AppTask.h / AppTask.c</td><td><span class="badge badge-new">NEW</span></td><td>10ms: DrvCan_ReceiveUint16() → DrvUart_SendUint16()</td></tr>
+  <tr><td>Cpu0_Main.c</td><td><span class="badge badge-new">NEW</span></td><td>전체 초기화 순서 및 메인 루프</td></tr>
+</table>
+
+<hr class="section-divider">
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>4. 핵심 코드</h2>
+
+<h3>4-1. Main 보드 — CAN 송신 (DrvCan.c)</h3>
+<pre><span class="kw">void</span> <span class="fn">DrvCan_Init</span>(<span class="kw">void</span>)
+{
+    IfxMultican_Can_Config canCfg;
+    <span class="fn">IfxMultican_Can_initModuleConfig</span>(&amp;canCfg, &amp;MODULE_CAN);
+    <span class="fn">IfxMultican_Can_initModule</span>(&amp;s_can, &amp;canCfg);
+
+    IfxMultican_Can_NodeConfig nodeCfg;
+    <span class="fn">IfxMultican_Can_Node_initConfig</span>(&amp;nodeCfg, &amp;s_can);
+    nodeCfg.nodeId    = IfxMultican_NodeId_0;
+    nodeCfg.baudrate  = <span class="num">500000u</span>;             <span class="cm">/* 500 kbps */</span>
+    nodeCfg.rxPin     = &amp;IfxMultican_RXD0B_P20_7_IN;
+    nodeCfg.txPin     = &amp;IfxMultican_TXD0_P20_8_OUT;
+    <span class="fn">IfxMultican_Can_Node_init</span>(&amp;s_node, &amp;nodeCfg);
+
+    IfxMultican_Can_MsgObjConfig txCfg;
+    <span class="fn">IfxMultican_Can_MsgObj_initConfig</span>(&amp;txCfg, &amp;s_node);
+    txCfg.msgObjId           = <span class="num">0u</span>;
+    txCfg.messageId          = <span class="num">0x100u</span>;
+    txCfg.frame              = IfxMultican_Frame_transmit;
+    txCfg.control.messageLen = IfxMultican_DataLengthCode_2;
+    <span class="fn">IfxMultican_Can_MsgObj_init</span>(&amp;s_txMsgObj, &amp;txCfg);
+}
+
+<span class="kw">void</span> <span class="fn">DrvCan_SendUint16</span>(uint16 value)
+{
+    IfxMultican_Message txMsg;
+    <span class="fn">IfxMultican_Message_init</span>(&amp;txMsg, <span class="num">0x100u</span>, (uint32)value, <span class="num">0u</span>,
+                             IfxMultican_DataLengthCode_2);
+    uint32 retry = <span class="num">0u</span>;
+    <span class="kw">while</span> ((<span class="fn">IfxMultican_Can_MsgObj_sendMessage</span>(&amp;s_txMsgObj, &amp;txMsg)
+            == IfxMultican_Status_notSentBusy) &amp;&amp; (++retry &lt; <span class="num">10000u</span>)) {}
+}</pre>
+
+<h3>4-2. Sub 보드 — CAN 수신 ISR (DrvCan.c)</h3>
+<pre><span class="pp">IFX_INTERRUPT</span>(DrvCan_RxISR, <span class="num">0</span>, DRVCAN_RX_PRIORITY)
+{
+    IfxMultican_Message rxMsg;
+    <span class="fn">IfxMultican_Can_MsgObj_readMessage</span>(&amp;s_rxMsgObj, &amp;rxMsg);
+    s_rxData = (uint16)(rxMsg.data[<span class="num">0</span>] &amp; <span class="num">0x0FFFu</span>);  <span class="cm">/* 12-bit ADC */</span>
+    s_rxFlag = TRUE;
+}
+
+boolean <span class="fn">DrvCan_ReceiveUint16</span>(uint16 *value)
+{
+    <span class="kw">if</span> (!s_rxFlag) <span class="kw">return</span> FALSE;
+    s_rxFlag = FALSE;
+    *value = s_rxData;
+    <span class="kw">return</span> TRUE;
+}</pre>
+
+<h3>4-3. Sub 보드 — GTM Timer (DrvGtmTimer.c)</h3>
+<pre><span class="kw">void</span> <span class="fn">DrvGtmTimer_Init</span>(<span class="kw">void</span>)
+{
+    Ifx_GTM *gtm  = &amp;MODULE_GTM;
+    float32  fMod = <span class="fn">IfxGtm_Cmu_getModuleFrequency</span>(gtm);
+
+    <span class="fn">IfxGtm_enable</span>(gtm);
+    <span class="fn">IfxGtm_Cmu_setGclkFrequency</span>(gtm, fMod);
+    <span class="fn">IfxGtm_Cmu_enableClocks</span>(gtm, IFXGTM_CMU_CLKEN_FXCLK);  <span class="cm">/* ← 필수 */</span>
+
+    IfxGtm_Tom_Pwm_Config cfg;
+    <span class="fn">IfxGtm_Tom_Pwm_initConfig</span>(&amp;cfg, gtm);
+    cfg.tom                   = IfxGtm_Tom_0;
+    cfg.tomChannel            = IfxGtm_Tom_Ch_1;
+    cfg.clock                 = IfxGtm_Tom_Ch_ClkSrc_cmuFxclk1;
+    cfg.period                = <span class="num">6250u</span>;   <span class="cm">/* FXCLK1=6.25MHz → 1ms */</span>
+    cfg.interrupt.ccu0Enabled = TRUE;
+    cfg.interrupt.isrPriority = DRVGTMTIMER_ISR_PRIORITY;
+    <span class="fn">IfxGtm_Tom_Pwm_init</span>(&amp;s_timer, &amp;cfg);
+}</pre>
+
+<h3>4-4. Sub 보드 — 스케줄러 (Scheduler.c)</h3>
+<pre><span class="kw">void</span> <span class="fn">Scheduler_Run</span>(<span class="kw">void</span>)
+{
+    <span class="kw">static</span> uint32 last_counter = <span class="num">0u</span>;
+    uint32 now = g_1ms_counter;
+
+    <span class="kw">if</span> (now == last_counter) <span class="kw">return</span>;
+    last_counter = now;
+
+    <span class="kw">if</span> ((now %   <span class="num">1U</span>) == <span class="num">0U</span>) <span class="fn">AppTask_1ms</span>();
+    <span class="kw">if</span> ((now %  <span class="num">10U</span>) == <span class="num">0U</span>) <span class="fn">AppTask_10ms</span>();
+    <span class="kw">if</span> ((now % <span class="num">100U</span>) == <span class="num">0U</span>) <span class="fn">AppTask_100ms</span>();
+}</pre>
+
+<hr class="section-divider">
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>5. 트러블슈팅 — GTM ISR 미동작</h2>
+
+<div class="fix-box">
+<strong>[현상]</strong> Sub 보드에서 GTM TOM0 Ch1 ISR이 진입되지 않음 → g_1ms_counter 증가 안됨 → Scheduler 동작 불가
+</div>
+
+<table>
+  <tr><th>항목</th><th>내용</th></tr>
+  <tr><td>원인</td><td><code>IfxGtm_Cmu_enableClocks(gtm, IFXGTM_CMU_CLKEN_FXCLK)</code> 미호출 → FXCLK1 소스 클럭 비활성화 상태</td></tr>
+  <tr><td>Main 프로젝트</td><td>DrvPwm_Init() 내부에서 위 함수 호출 → 의존성 존재</td></tr>
+  <tr><td>Sub 프로젝트</td><td>DrvPwm 없음 → FXCLK 미활성화 → TOM Ch1 타이머 동작 불가</td></tr>
+  <tr><td>수정</td><td>DrvGtmTimer_Init() 내부에서 직접 <code>IfxGtm_Cmu_enableClocks()</code> 호출</td></tr>
+</table>
+
+<h3>GTM 클럭 체인</h3>
+<div class="arch-box">
+fSOURCE (200 MHz)<br>
+&nbsp;&nbsp;└─ GTM Module Freq = fSOURCE / 2 = <strong>100 MHz</strong><br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ GCLK = GTM Module Freq = <strong>100 MHz</strong><br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ FXCLK1 = GCLK / 16 = <strong>6,250,000 Hz</strong><br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ period = 6,250 ticks = <strong>1 ms</strong> ← ISR 주기
+</div>
+
+<hr class="section-divider">
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>6. ISR 우선순위 맵</h2>
+
+<table>
+  <tr><th>보드</th><th>ISR 이름</th><th>우선순위</th><th>역할</th></tr>
+  <tr><td>Sub</td><td>DrvUart_ErrISR</td><td>2</td><td>UART 에러</td></tr>
+  <tr><td>Sub</td><td>DrvUart_TxISR</td><td>3</td><td>UART TX</td></tr>
+  <tr><td>Sub</td><td>DrvUart_RxISR</td><td>4</td><td>UART RX</td></tr>
+  <tr><td>Sub</td><td>DrvCan_RxISR</td><td>10</td><td>CAN 수신</td></tr>
+  <tr><td>Sub</td><td>gtmTimer_ISR</td><td>11</td><td>1ms 스케줄러 tick</td></tr>
+  <tr><td>Main</td><td>DrvCan (폴링)</td><td>—</td><td>TX 폴링 방식 (ISR 없음)</td></tr>
+</table>
+
+<hr class="section-divider">
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>7. 데이터 흐름 요약</h2>
+
+<div class="arch-box">
+[Main 보드 — 10ms마다]<br>
+AN0 핀 전압 (0~3.3V)<br>
+&nbsp;&nbsp;→ ADC 12bit 변환 (0~4095)<br>
+&nbsp;&nbsp;→ DrvCan_SendUint16(value)<br>
+&nbsp;&nbsp;→ CAN Frame: ID=0x100, DLC=2, data[0]=(uint32)value<br>
+&nbsp;&nbsp;→ P20.8 → TLE7250G → CANH/CANL → 버스<br><br>
+[Sub 보드 — 수신 즉시]<br>
+CANH/CANL → TLE7250G → P20.7<br>
+&nbsp;&nbsp;→ CAN RX ISR (DrvCan_RxISR)<br>
+&nbsp;&nbsp;→ rxMsg.data[0] &amp; 0x0FFF → s_rxData<br>
+&nbsp;&nbsp;→ AppTask_10ms(): DrvCan_ReceiveUint16() → DrvUart_SendUint16()<br>
+&nbsp;&nbsp;→ UART: "XXXX\n" (ASCII 10진수)<br>
+&nbsp;&nbsp;→ P15.2 → USB-TTL → PC 시리얼 터미널
+</div>
+
+<div class="footer">
+  TC237 CAN 통신 프로젝트 · Infineon AURIX TC237 · TASKING Compiler · iLLD v1.x<br>
+  Generated by Claude Code (claude-sonnet-4-6) · 2026-05-02
+</div>
+
+</body>
+</html>
