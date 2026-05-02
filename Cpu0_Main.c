@@ -5,10 +5,9 @@
 #include "Ifx_Types.h"
 #include "IfxCpu.h"
 #include "IfxScuWdt.h"
-#include "IfxPort.h"
 #include "IfxStm.h"
+#include "AppTask.h"
 
-#define LED0                &MODULE_P13, 0      /* Application Kit TC2x7 LED (active-low) */
 #define ISR_PRIORITY_STM0   (10U)
 #define SCHED_TICK_MS       (1U)
 
@@ -62,35 +61,6 @@ static void initSystemTimer(void)
 }
 
 /*-----------------------------------------------------------------------------------------------*/
-/* Application tasks                                                                             */
-/*-----------------------------------------------------------------------------------------------*/
-static void initLed(void)
-{
-    IfxPort_setPinMode(LED0, IfxPort_Mode_outputPushPullGeneral);
-    IfxPort_setPinHigh(LED0);
-}
-
-static void Task_1ms(void)
-{
-    /* 1 ms 마다 실행할 로직 */
-}
-
-static void Task_10ms(void)
-{
-    /* 10 ms 마다 실행할 로직 */
-}
-
-static void Task_100ms(void)
-{
-    /* 100 ms 마다 실행할 로직 */
-}
-
-static void Task_500ms(void)
-{
-    IfxPort_togglePin(LED0);    /* 500 ms 마다 LED 토글 → 1 Hz blink */
-}
-
-/*-----------------------------------------------------------------------------------------------*/
 /* Scheduler — 1 ms counter 를 modulo 로 분주                                                     */
 /*-----------------------------------------------------------------------------------------------*/
 static void Scheduler(void)
@@ -104,10 +74,9 @@ static void Scheduler(void)
     }
     last_counter = now;
 
-    if ((now %   1U) == 0U) Task_1ms();
-    if ((now %  10U) == 0U) Task_10ms();
-    if ((now % 100U) == 0U) Task_100ms();
-    if ((now % 500U) == 0U) Task_500ms();
+    if ((now %   1U) == 0U) AppTask_1ms();
+    if ((now %  10U) == 0U) AppTask_10ms();
+    if ((now % 100U) == 0U) AppTask_100ms();
 }
 
 /*-----------------------------------------------------------------------------------------------*/
@@ -131,7 +100,7 @@ void core0_main(void)
     Test4++;
     TestFunction();
 
-    initLed();
+    AppTask_Init();
     initSystemTimer();
 
     while (1)
