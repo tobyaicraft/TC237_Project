@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>TC237 SPI - MPU-9250 IMU 통신 설계서</title>
+<style>
+  body {
+    font-family: 'Malgun Gothic', '맑은 고딕', sans-serif;
+    max-width: 210mm;
+    margin: 20px auto;
+    padding: 20px 30px;
+    line-height: 1.8;
+    color: #222;
+    font-size: 11pt;
+  }
+  h1 {
+    text-align: center;
+    font-size: 20pt;
+    border-bottom: 3px solid #333;
+    padding-bottom: 10px;
+    margin-bottom: 30px;
+  }
+  h2 {
+    font-size: 14pt;
+    color: #1a5276;
+    border-left: 5px solid #1a5276;
+    padding-left: 12px;
+    margin-top: 35px;
+  }
+  h3 {
+    font-size: 12pt;
+    color: #2c3e50;
+    margin-top: 20px;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 12px 0;
+    font-size: 10pt;
+  }
+  th, td {
+    border: 1px solid #999;
+    padding: 6px 10px;
+    text-align: center;
+  }
+  th {
+    background-color: #2c3e50;
+    color: white;
+    font-weight: bold;
+  }
+  tr:nth-child(even) { background-color: #f2f2f2; }
+  code {
+    font-family: 'Consolas', 'Courier New', monospace;
+    background-color: #f4f4f4;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 10pt;
+  }
+  pre {
+    background-color: #1e1e1e;
+    color: #dcdcdc;
+    padding: 14px 18px;
+    border-radius: 5px;
+    overflow-x: auto;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 9.5pt;
+    line-height: 1.5;
+  }
+  pre .comment { color: #6a9955; }
+  pre .keyword { color: #569cd6; }
+  pre .define  { color: #c586c0; }
+  pre .number  { color: #b5cea8; }
+  pre .string  { color: #ce9178; }
+  .note {
+    background-color: #eaf2f8;
+    border-left: 4px solid #2980b9;
+    padding: 10px 15px;
+    margin: 12px 0;
+    font-size: 10pt;
+  }
+  .warn {
+    background-color: #fef9e7;
+    border-left: 4px solid #f39c12;
+    padding: 10px 15px;
+    margin: 12px 0;
+    font-size: 10pt;
+  }
+  .img-placeholder {
+    border: 2px dashed #aaa;
+    background-color: #fafafa;
+    padding: 30px;
+    text-align: center;
+    color: #888;
+    margin: 15px 0;
+    font-size: 10pt;
+  }
+  .caption {
+    text-align: center;
+    font-size: 9.5pt;
+    color: #555;
+    margin-top: 5px;
+    font-style: italic;
+  }
+  .toc {
+    background-color: #f9f9f9;
+    border: 1px solid #ddd;
+    padding: 15px 25px;
+    margin-bottom: 30px;
+  }
+  .toc ul { list-style: none; padding-left: 0; }
+  .toc li { margin: 4px 0; }
+  .toc li::before { content: "▸ "; color: #1a5276; }
+</style>
+</head>
+<body>
+
+<h1>TC237 QSPI &ndash; MPU-9250 SPI 통신 설계서</h1>
+
+<p style="text-align:center; color:#555;">
+  MCU: Infineon AURIX TC237 &nbsp;|&nbsp; Sensor: InvenSense MPU-9250/6500<br>
+  통신: SPI (QSPI3 Master) &nbsp;|&nbsp; 클럭: 1 MHz &nbsp;|&nbsp; 모드: Mode 0 (CPOL=0, CPHA=0)
+</p>
+
+<div class="toc">
+  <strong>목차</strong>
+  <ul>
+    <li>1. 시스템 개요</li>
+    <li>2. SPI 통신 규격 결정</li>
+    <li>3. CPOL / CPHA 설정 근거</li>
+    <li>4. SPI 클럭 주파수 선정</li>
+    <li>5. 핀 배치 및 하드웨어 연결</li>
+    <li>6. SPI 프로토콜 (Read / Write 프레임)</li>
+    <li>7. QSPI3 FIFO 한계와 대응</li>
+    <li>8. 레지스터 쓰기 검증 (Write-Verify)</li>
+    <li>9. 초기화 시퀀스 및 딜레이 설계</li>
+    <li>10. 데이터 읽기 전략</li>
+    <li>11. 소프트웨어 아키텍처</li>
+    <li>12. 자세 계산 (Complementary Filter)</li>
+    <li>13. 트러블슈팅 이력</li>
+  </ul>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>1. 시스템 개요</h2>
+
+<p>
+  본 설계는 TC237 마이크로컨트롤러의 QSPI3 모듈을 SPI Master로 구성하여,
+  MPU-9250 9축 IMU 센서(가속도계 3축 + 자이로스코프 3축 + 자력계 3축)와 통신하는 시스템이다.
+  가속도계와 자이로스코프 데이터를 100Hz 주기로 읽어 Complementary Filter를 적용하여
+  Roll/Pitch/Yaw 자세 각도를 계산한다.
+</p>
+
+<table>
+  <tr><th>항목</th><th>사양</th></tr>
+  <tr><td>MCU</td><td>Infineon TC237L (TriCore, 200 MHz)</td></tr>
+  <tr><td>센서</td><td>InvenSense MPU-9250 / MPU-6500</td></tr>
+  <tr><td>통신 인터페이스</td><td>SPI (QSPI3 모듈)</td></tr>
+  <tr><td>SPI 클럭</td><td>1 MHz</td></tr>
+  <tr><td>SPI 모드</td><td>Mode 0 (CPOL=0, CPHA=0)</td></tr>
+  <tr><td>데이터 폭</td><td>8-bit, MSB first</td></tr>
+  <tr><td>CS 제어</td><td>GPIO 수동 제어 (P22.2)</td></tr>
+  <tr><td>샘플레이트</td><td>100 Hz (10ms 주기)</td></tr>
+</table>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>2. SPI 통신 규격 결정</h2>
+
+<p>
+  MPU-9250은 I2C와 SPI 두 가지 인터페이스를 지원한다. 본 설계에서 SPI를 선택한 이유는 다음과 같다.
+</p>
+
+<table>
+  <tr><th>비교 항목</th><th>I2C</th><th>SPI</th></tr>
+  <tr><td>최대 속도</td><td>400 kHz (Fast Mode)</td><td>20 MHz (센서 데이터 읽기)</td></tr>
+  <tr><td>신호선 수</td><td>2 (SDA, SCL)</td><td>4 (SCLK, MOSI, MISO, CS)</td></tr>
+  <tr><td>Full Duplex</td><td>불가</td><td>가능</td></tr>
+  <tr><td>TC237 지원</td><td>I2C 모듈 또는 ASCLIN</td><td>QSPI 전용 모듈</td></tr>
+</table>
+
+<p>
+  TC237의 QSPI 모듈은 SPI 통신에 최적화된 전용 하드웨어이며,
+  DMA 지원, 인터럽트 기반 전송, 하드웨어 FIFO를 제공한다.
+  I2C 대비 50배 빠른 클럭을 사용할 수 있어 SPI를 선택하였다.
+</p>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>3. CPOL / CPHA 설정 근거</h2>
+
+<h3>3.1 SPI 모드란?</h3>
+<p>
+  SPI 통신의 클럭 동작은 <strong>CPOL</strong>(Clock Polarity)과 <strong>CPHA</strong>(Clock Phase) 두 파라미터로 결정된다.
+</p>
+
+<table>
+  <tr><th>SPI Mode</th><th>CPOL</th><th>CPHA</th><th>클럭 Idle</th><th>데이터 샘플링</th></tr>
+  <tr><td><strong>Mode 0</strong></td><td>0</td><td>0</td><td>Low</td><td>Rising Edge (첫 번째 에지)</td></tr>
+  <tr><td>Mode 1</td><td>0</td><td>1</td><td>Low</td><td>Falling Edge (두 번째 에지)</td></tr>
+  <tr><td>Mode 2</td><td>1</td><td>0</td><td>High</td><td>Falling Edge (첫 번째 에지)</td></tr>
+  <tr><td><strong>Mode 3</strong></td><td>1</td><td>1</td><td>High</td><td>Rising Edge (두 번째 에지)</td></tr>
+</table>
+
+<h3>3.2 MPU-9250 데이터시트 요구사항</h3>
+<p>
+  MPU-9250 Product Specification (PS-MPU-9250A-01) Section 7.5에 따르면:
+</p>
+<div class="note">
+  <strong>MPU-9250 SPI Interface:</strong><br>
+  &bull; Supports SPI <strong>Mode 0</strong> (CPOL=0, CPHA=0) and <strong>Mode 3</strong> (CPOL=1, CPHA=1)<br>
+  &bull; Data is sampled on the <strong>rising edge</strong> of SCLK<br>
+  &bull; Data is output on the <strong>falling edge</strong> of SCLK<br>
+  &bull; MSB first, 8-bit frame
+</div>
+
+<p>
+  Mode 0과 Mode 3 모두 rising edge에서 데이터를 샘플링하는 공통점이 있다.
+  본 설계에서는 가장 기본적인 <strong>Mode 0 (CPOL=0, CPHA=0)</strong>을 선택하였다.
+</p>
+
+<h3>3.3 TC237 QSPI 설정 코드</h3>
+<pre>
+<span class="comment">/* TC237 QSPI3 채널 설정 */</span>
+chCfg.ch.mode.clockPolarity  = <span class="number">0</span>;   <span class="comment">/* CPOL=0: 클럭 Idle = Low   */</span>
+chCfg.ch.mode.shiftClock     = <span class="number">1</span>;   <span class="comment">/* 데이터 Shift = Trailing Edge (Falling) */</span>
+chCfg.ch.mode.dataHeading    = <span class="number">1</span>;   <span class="comment">/* MSB first                  */</span>
+chCfg.ch.mode.dataWidth      = <span class="number">8</span>;   <span class="comment">/* 8-bit 프레임              */</span>
+</pre>
+
+<div class="warn">
+  <strong>주의 — TC237 QSPI의 shiftClock 파라미터:</strong><br>
+  TC237 QSPI에서 <code>shiftClock</code>은 데이터를 <strong>출력(Shift)</strong>하는 에지를 지정한다.
+  <code>shiftClock=1</code>이면 trailing edge(falling)에서 데이터를 출력하고,
+  상대방(MPU-9250)은 leading edge(rising)에서 샘플링한다.
+  이는 SPI Mode 0 (CPHA=0)에 해당한다.
+  일반적인 CPHA 정의와 직접 매핑되지 않으므로 주의가 필요하다.
+</div>
+
+<div class="img-placeholder">
+  [Logic Analyzer 캡처 삽입 위치]<br>
+  SCLK Idle=Low, Rising Edge에서 MISO/MOSI 데이터 샘플링 확인
+</div>
+<p class="caption">그림 1. SPI Mode 0 타이밍 — Logic Analyzer 캡처</p>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>4. SPI 클럭 주파수 선정</h2>
+
+<h3>4.1 MPU-9250 최대 주파수</h3>
+<p>
+  MPU-9250 데이터시트에 따른 SPI 클럭 주파수 제한:
+</p>
+
+<table>
+  <tr><th>동작</th><th>최대 주파수</th><th>비고</th></tr>
+  <tr><td>레지스터 읽기/쓰기</td><td><strong>1 MHz</strong></td><td>설정, 초기화 등</td></tr>
+  <tr><td>센서 데이터 읽기</td><td><strong>20 MHz</strong></td><td>0x3B~0x48 영역</td></tr>
+</table>
+
+<h3>4.2 설계 결정: 1 MHz 고정</h3>
+<p>
+  센서 데이터 영역(0x3B~0x48)은 20 MHz까지 가능하지만, 본 설계에서는 <strong>1 MHz로 통일</strong>하였다.
+</p>
+<ul>
+  <li><strong>안정성 우선:</strong> 점퍼선(약 10cm) 연결 환경에서 고주파는 신호 무결성 문제 발생 가능</li>
+  <li><strong>충분한 성능:</strong> 6축 12바이트를 1 MHz로 읽는 데 약 150&mu;s. 10ms(100Hz) 주기 대비 1.5%에 불과</li>
+  <li><strong>단일 클럭:</strong> 레지스터 R/W와 데이터 읽기를 같은 속도로 통일하여 코드 단순화</li>
+</ul>
+
+<h3>4.3 전송 시간 계산</h3>
+<table>
+  <tr><th>항목</th><th>계산</th><th>결과</th></tr>
+  <tr><td>1바이트 전송</td><td>8 bit &divide; 1 MHz</td><td>8 &mu;s</td></tr>
+  <tr><td>1 레지스터 읽기 (2바이트)</td><td>주소(8bit) + 데이터(8bit) + CS 오버헤드</td><td>약 20 &mu;s</td></tr>
+  <tr><td>6축 전체 읽기 (6회 &times; 2바이트)</td><td>6 &times; 20 &mu;s</td><td>약 120 &mu;s</td></tr>
+  <tr><td>10ms 주기 대비 점유율</td><td>120 &mu;s &divide; 10,000 &mu;s</td><td><strong>1.2%</strong></td></tr>
+</table>
+
+<div class="img-placeholder">
+  [Logic Analyzer 캡처 삽입 위치]<br>
+  SCLK 주파수 측정 (1 MHz = 주기 1&mu;s) 확인
+</div>
+<p class="caption">그림 2. SPI 클럭 주파수 측정 — Logic Analyzer 캡처</p>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>5. 핀 배치 및 하드웨어 연결</h2>
+
+<table>
+  <tr><th>신호</th><th>TC237 핀</th><th>AppKit 커넥터</th><th>MPU-9250 핀</th><th>방향</th></tr>
+  <tr><td>SCLK</td><td>P22.3</td><td>X102 pin 26</td><td>SCL</td><td>Master &rarr; Slave</td></tr>
+  <tr><td>MOSI (MTSR)</td><td>P22.0</td><td>X102 pin 23</td><td>SDA</td><td>Master &rarr; Slave</td></tr>
+  <tr><td>MISO (MRST)</td><td>P22.1</td><td>X102 pin 24</td><td>ADO</td><td>Slave &rarr; Master</td></tr>
+  <tr><td>CS (nCS)</td><td>P22.2</td><td>X102 pin 25</td><td>NCS</td><td>Master &rarr; Slave</td></tr>
+  <tr><td>VCC</td><td>3.3V</td><td>-</td><td>VCC</td><td>전원</td></tr>
+  <tr><td>GND</td><td>GND</td><td>-</td><td>GND</td><td>전원</td></tr>
+</table>
+
+<div class="note">
+  <strong>CS 수동 제어:</strong>
+  TC237 QSPI의 하드웨어 CS(SLSO) 대신 GPIO(P22.2)를 수동으로 제어한다.
+  <code>autoCS = 0</code>으로 설정하여 하드웨어 CS를 비활성화하고,
+  소프트웨어에서 CS Low/High 타이밍을 직접 관리한다.
+  이는 MPU-9250의 CS 타이밍 요구사항을 정확히 제어하기 위함이다.
+</div>
+
+<div class="img-placeholder">
+  [하드웨어 연결 사진 또는 회로도 삽입 위치]
+</div>
+<p class="caption">그림 3. TC237 AppKit &mdash; MPU-9250 배선도</p>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>6. SPI 프로토콜 (Read / Write 프레임)</h2>
+
+<h3>6.1 프레임 구조</h3>
+<p>
+  MPU-9250의 SPI 프레임은 첫 바이트의 <strong>MSB(bit 7)</strong>로 Read/Write를 구분한다.
+</p>
+
+<table>
+  <tr><th>Bit 7</th><th>Bit 6~0</th><th>동작</th></tr>
+  <tr><td><strong>1</strong></td><td>레지스터 주소</td><td>Read (0x80 | addr)</td></tr>
+  <tr><td><strong>0</strong></td><td>레지스터 주소</td><td>Write (0x00 | addr)</td></tr>
+</table>
+
+<h3>6.2 단일 레지스터 읽기</h3>
+<pre>
+<span class="comment">/*
+ * SPI Read 타이밍:
+ *
+ * CS   ‾‾\_________________________________/‾‾
+ * MOSI   [1|addr(7bit)] [  0x00 (dummy)   ]
+ * MISO   [  (무시)     ] [  데이터(8bit)   ]
+ * SCLK   _/‾\_/‾\_/‾\_/‾\_/‾\_/‾\_/‾\_/‾\_
+ *          8 clocks        8 clocks
+ */</span>
+uint8 DrvSpi_ReadReg(uint8 regAddr)
+{
+    uint8 txBuf[<span class="number">2</span>];
+    uint8 rxBuf[<span class="number">2</span>];
+
+    txBuf[<span class="number">0</span>] = <span class="number">0x80u</span> | regAddr;   <span class="comment">/* bit7=1: Read */</span>
+    txBuf[<span class="number">1</span>] = <span class="number">0x00u</span>;              <span class="comment">/* dummy byte   */</span>
+
+    DrvSpi_CsLow();
+    DrvSpi_WaitReady();
+    IfxQspi_SpiMaster_exchange(&amp;s_spiChannel, txBuf, rxBuf, <span class="number">2</span>);
+    DrvSpi_WaitReady();
+    DrvSpi_CsHigh();
+
+    <span class="keyword">return</span> rxBuf[<span class="number">1</span>];   <span class="comment">/* 두 번째 바이트가 실제 데이터 */</span>
+}
+</pre>
+
+<h3>6.3 단일 레지스터 쓰기</h3>
+<pre>
+<span class="comment">/*
+ * SPI Write 타이밍:
+ *
+ * CS   ‾‾\_________________________________/‾‾
+ * MOSI   [0|addr(7bit)] [  데이터(8bit)    ]
+ * MISO   [     (무시)                      ]
+ * SCLK   _/‾\_/‾\_/‾\_/‾\_/‾\_/‾\_/‾\_/‾\_
+ *          8 clocks        8 clocks
+ */</span>
+<span class="keyword">void</span> DrvSpi_WriteReg(uint8 regAddr, uint8 data)
+{
+    uint8 txBuf[<span class="number">2</span>];
+
+    txBuf[<span class="number">0</span>] = regAddr &amp; <span class="number">0x7Fu</span>;   <span class="comment">/* bit7=0: Write */</span>
+    txBuf[<span class="number">1</span>] = data;
+
+    DrvSpi_CsLow();
+    DrvSpi_WaitReady();
+    IfxQspi_SpiMaster_exchange(&amp;s_spiChannel, txBuf, NULL_PTR, <span class="number">2</span>);
+    DrvSpi_WaitReady();
+    DrvSpi_CsHigh();
+}
+</pre>
+
+<div class="img-placeholder">
+  [Logic Analyzer 캡처 삽입 위치]<br>
+  WHO_AM_I(0x75) 읽기: MOSI=0xF5, MISO 두번째 바이트=0x70 or 0x71
+</div>
+<p class="caption">그림 4. SPI Read 프레임 — WHO_AM_I 레지스터 읽기</p>
+
+<div class="img-placeholder">
+  [Logic Analyzer 캡처 삽입 위치]<br>
+  PWR_MGMT_1(0x6B) 쓰기: MOSI=[0x6B, 0x01]
+</div>
+<p class="caption">그림 5. SPI Write 프레임 — PWR_MGMT_1 레지스터 쓰기</p>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>7. QSPI3 FIFO 한계와 대응</h2>
+
+<h3>7.1 문제 현상</h3>
+<p>
+  MPU-9250의 센서 데이터는 0x3B~0x48 영역에 14바이트(가속도 6 + 온도 2 + 자이로 6)가 연속으로 배치되어 있다.
+  이를 한 번의 SPI 트랜잭션으로 읽으려 하면(15바이트 = 주소 1 + 데이터 14),
+  <strong>앞쪽 4바이트만 정상 수신되고 나머지는 0으로 읽히는</strong> 현상이 발생하였다.
+</p>
+
+<h3>7.2 원인 분석</h3>
+<p>
+  TC237의 QSPI3는 "경량(Light)" SPI 모듈로, QSPI0/1/2 대비 <strong>FIFO 크기가 작다.</strong>
+  8-bit 프레임 모드에서 RX FIFO가 수용할 수 있는 바이트 수를 초과하면
+  뒤쪽 데이터가 유실된다.
+</p>
+
+<table>
+  <tr><th>시도</th><th>전송 크기</th><th>결과</th></tr>
+  <tr><td>14바이트 버스트</td><td>15 bytes (1+14)</td><td>AX, AY만 정상, AZ~GZ = 0</td></tr>
+  <tr><td>6바이트 버스트 &times; 2</td><td>7 bytes (1+6)</td><td>AX, AY만 정상, AZ = 0</td></tr>
+  <tr><td><strong>2바이트 버스트 &times; 6</strong></td><td><strong>3 bytes (1+2)</strong></td><td><strong>6축 전부 정상</strong></td></tr>
+</table>
+
+<h3>7.3 해결: 축별 2바이트 분할 읽기</h3>
+<pre>
+<span class="comment">/* 각 축 2바이트씩 개별 읽기 (QSPI3 FIFO 한계 대응) */</span>
+DrvSpi_ReadBurst(<span class="number">0x3B</span>, &amp;buf[<span class="number">0</span>],  <span class="number">2</span>);   <span class="comment">/* AX High, Low */</span>
+DrvSpi_ReadBurst(<span class="number">0x3D</span>, &amp;buf[<span class="number">2</span>],  <span class="number">2</span>);   <span class="comment">/* AY High, Low */</span>
+DrvSpi_ReadBurst(<span class="number">0x3F</span>, &amp;buf[<span class="number">4</span>],  <span class="number">2</span>);   <span class="comment">/* AZ High, Low */</span>
+buf[<span class="number">6</span>] = <span class="number">0</span>; buf[<span class="number">7</span>] = <span class="number">0</span>;              <span class="comment">/* TEMP 생략    */</span>
+DrvSpi_ReadBurst(<span class="number">0x43</span>, &amp;buf[<span class="number">8</span>],  <span class="number">2</span>);   <span class="comment">/* GX High, Low */</span>
+DrvSpi_ReadBurst(<span class="number">0x45</span>, &amp;buf[<span class="number">10</span>], <span class="number">2</span>);   <span class="comment">/* GY High, Low */</span>
+DrvSpi_ReadBurst(<span class="number">0x47</span>, &amp;buf[<span class="number">12</span>], <span class="number">2</span>);   <span class="comment">/* GZ High, Low */</span>
+</pre>
+
+<p>
+  각 트랜잭션이 3바이트(주소 1 + 데이터 2)로 FIFO 한계 내에서 동작하므로,
+  6축 모든 데이터를 안정적으로 수신할 수 있다.
+</p>
+
+<div class="img-placeholder">
+  [Logic Analyzer 캡처 삽입 위치]<br>
+  6회 CS 토글과 각 2바이트 데이터 읽기 패턴
+</div>
+<p class="caption">그림 6. 분할 읽기 SPI 파형 — 6축 데이터 수신</p>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>8. 레지스터 쓰기 검증 (Write-Verify)</h2>
+
+<h3>8.1 문제 현상</h3>
+<p>
+  초기화 과정에서 레지스터에 값을 쓴 후 읽어보면 <strong>의도한 값과 다른 값</strong>이 저장되어 있었다.
+</p>
+
+<table>
+  <tr><th>레지스터</th><th>쓴 값</th><th>읽힌 값</th><th>영향</th></tr>
+  <tr><td>PWR_MGMT_1 (0x6B)</td><td>0x01</td><td>0x1B</td><td>GYRO_STANDBY=1 → 자이로 비활성</td></tr>
+  <tr><td>PWR_MGMT_2 (0x6C)</td><td>0x00</td><td>0x08</td><td>DISABLE_ZA=1 → Z축 가속도 비활성</td></tr>
+  <tr><td>GYRO_CONFIG (0x1B)</td><td>0x08</td><td>0x00</td><td>±250°/s (기본값) 유지</td></tr>
+  <tr><td>ACCEL_CONFIG (0x1C)</td><td>0x08</td><td>0x00</td><td>±2g (기본값) 유지</td></tr>
+</table>
+
+<h3>8.2 원인</h3>
+<p>
+  리셋 직후 또는 클럭 소스 변경 직후 내부 상태 전환 시간이 필요하며,
+  이 기간에 SPI 쓰기가 무시되거나 잘못 반영될 수 있다.
+</p>
+
+<h3>8.3 해결: Write-Read-Verify 패턴</h3>
+<pre>
+<span class="keyword">static</span> boolean writeRegVerify(uint8 regAddr, uint8 data)
+{
+    uint8 retry;
+    uint8 readBack;
+
+    <span class="keyword">for</span> (retry = <span class="number">0</span>; retry &lt; <span class="number">5</span>; retry++)
+    {
+        DrvSpi_WriteReg(regAddr, data);
+        delay_ms(<span class="number">5</span>);                       <span class="comment">/* 반영 대기 */</span>
+        readBack = DrvSpi_ReadReg(regAddr);
+        <span class="keyword">if</span> (readBack == data)
+        {
+            <span class="keyword">return</span> TRUE;                   <span class="comment">/* 검증 성공 */</span>
+        }
+    }
+    <span class="keyword">return</span> FALSE;                          <span class="comment">/* 5회 실패 */</span>
+}
+</pre>
+
+<p>
+  각 레지스터를 쓴 후 5ms 대기 → 읽기 → 비교하여 최대 5회 재시도한다.
+  이 방식으로 모든 레지스터가 의도한 값으로 설정됨을 보장한다.
+</p>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>9. 초기화 시퀀스 및 딜레이 설계</h2>
+
+<h3>9.1 전체 시퀀스</h3>
+<table>
+  <tr><th>단계</th><th>레지스터</th><th>값</th><th>후 딜레이</th><th>설명</th></tr>
+  <tr><td>1</td><td>PWR_MGMT_1</td><td>0x80</td><td>200ms</td><td>디바이스 리셋</td></tr>
+  <tr><td>2</td><td>PWR_MGMT_1</td><td>0x01</td><td>50ms</td><td>Sleep 해제, Auto PLL 선택</td></tr>
+  <tr><td>3</td><td>USER_CTRL</td><td>0x10</td><td>10ms</td><td>SPI 전용 모드 (I2C 비활성)</td></tr>
+  <tr><td>4</td><td>PWR_MGMT_2</td><td>0x00</td><td>10ms</td><td>모든 축 활성화</td></tr>
+  <tr><td>5</td><td>GYRO_CONFIG</td><td>0x08</td><td>5ms</td><td>자이로 ±500&deg;/s</td></tr>
+  <tr><td>6</td><td>ACCEL_CONFIG</td><td>0x08</td><td>5ms</td><td>가속도 ±4g</td></tr>
+  <tr><td>7</td><td>CONFIG</td><td>0x03</td><td>5ms</td><td>DLPF 자이로 41Hz</td></tr>
+  <tr><td>8</td><td>ACCEL_CONFIG2</td><td>0x03</td><td>5ms</td><td>DLPF 가속도 41Hz</td></tr>
+  <tr><td>9</td><td>SMPLRT_DIV</td><td>0x09</td><td>50ms</td><td>샘플레이트 = 1kHz/(1+9) = 100Hz</td></tr>
+  <tr><td>10</td><td>WHO_AM_I</td><td>(읽기)</td><td>-</td><td>0x71(MPU-9250) 또는 0x70(MPU-6500) 확인</td></tr>
+</table>
+
+<h3>9.2 딜레이 설계 근거</h3>
+
+<table>
+  <tr><th>구간</th><th>딜레이</th><th>근거</th></tr>
+  <tr><td>리셋 후</td><td>200ms</td><td>데이터시트: 리셋 후 100ms 필요. 2배 마진 적용</td></tr>
+  <tr><td>클럭 변경 후</td><td>50ms</td><td>PLL 안정화 시간. 데이터시트 명시 없으나 경험적 값</td></tr>
+  <tr><td>SPI 모드 전환</td><td>10ms</td><td>I2C→SPI 전환 후 내부 상태 안정화</td></tr>
+  <tr><td>레지스터 쓰기 간</td><td>5ms</td><td>writeRegVerify 내부 대기. 재시도 포함 최대 25ms</td></tr>
+</table>
+
+<div class="warn">
+  <strong>딜레이 구현 방식:</strong>
+  초기화는 시스템 시작 시 1회만 실행되므로, 정밀 타이머 대신
+  busy-wait 루프(<code>delay_ms</code>)를 사용하였다.
+  @200MHz 기준 약 20,000 iteration이 1ms에 해당한다.
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>10. 데이터 읽기 전략</h2>
+
+<h3>10.1 레지스터 맵</h3>
+<p>
+  센서 데이터는 0x3B부터 14바이트가 Big Endian(High byte first)으로 연속 배치되어 있다.
+</p>
+
+<table>
+  <tr><th>주소</th><th>레지스터</th><th>데이터</th></tr>
+  <tr><td>0x3B, 0x3C</td><td>ACCEL_XOUT_H/L</td><td>가속도 X축 (16-bit signed)</td></tr>
+  <tr><td>0x3D, 0x3E</td><td>ACCEL_YOUT_H/L</td><td>가속도 Y축</td></tr>
+  <tr><td>0x3F, 0x40</td><td>ACCEL_ZOUT_H/L</td><td>가속도 Z축</td></tr>
+  <tr><td>0x41, 0x42</td><td>TEMP_OUT_H/L</td><td>온도 (사용 안 함)</td></tr>
+  <tr><td>0x43, 0x44</td><td>GYRO_XOUT_H/L</td><td>자이로 X축 (16-bit signed)</td></tr>
+  <tr><td>0x45, 0x46</td><td>GYRO_YOUT_H/L</td><td>자이로 Y축</td></tr>
+  <tr><td>0x47, 0x48</td><td>GYRO_ZOUT_H/L</td><td>자이로 Z축</td></tr>
+</table>
+
+<h3>10.2 바이트 조합 (Big Endian → sint16)</h3>
+<pre>
+<span class="comment">/* High byte와 Low byte를 16-bit signed 정수로 조합 */</span>
+s_accelRaw[<span class="number">0</span>] = (sint16)((uint16)buf[<span class="number">0</span>] &lt;&lt; <span class="number">8</span>) | buf[<span class="number">1</span>];   <span class="comment">/* AX */</span>
+s_accelRaw[<span class="number">1</span>] = (sint16)((uint16)buf[<span class="number">2</span>] &lt;&lt; <span class="number">8</span>) | buf[<span class="number">3</span>];   <span class="comment">/* AY */</span>
+s_accelRaw[<span class="number">2</span>] = (sint16)((uint16)buf[<span class="number">4</span>] &lt;&lt; <span class="number">8</span>) | buf[<span class="number">5</span>];   <span class="comment">/* AZ */</span>
+</pre>
+
+<h3>10.3 감도 변환</h3>
+<table>
+  <tr><th>센서</th><th>설정</th><th>감도 (LSB)</th><th>변환 공식</th></tr>
+  <tr><td>가속도계</td><td>±2g (기본값)</td><td>16,384 LSB/g</td><td>가속도(g) = raw / 16384</td></tr>
+  <tr><td>자이로스코프</td><td>±500&deg;/s</td><td>65.5 LSB/(&deg;/s)</td><td>각속도(&deg;/s) = raw / 65.5</td></tr>
+</table>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>11. 소프트웨어 아키텍처</h2>
+
+<h3>11.1 계층 구조</h3>
+<pre>
+┌─────────────────────────────────────────────┐
+│  AppTask.c                                  │
+│  AppTask_10ms() → 100Hz 주기 호출           │
+├─────────────────────────────────────────────┤
+│  DrvMpu9250.c                               │
+│  - Init: 센서 초기화 + 레지스터 설정        │
+│  - ReadSensors: 6축 데이터 읽기 + 자세 계산 │
+│  - SendUart: Roll/Pitch/Yaw UART 전송       │
+├─────────────────────────────────────────────┤
+│  DrvSpi.c                                   │
+│  - Init: QSPI3 Master 초기화               │
+│  - ReadReg / WriteReg: 단일 레지스터 R/W    │
+│  - ReadBurst: 연속 레지스터 읽기            │
+├─────────────────────────────────────────────┤
+│  iLLD (IfxQspi_SpiMaster)                   │
+│  Infineon Low-Level Driver                  │
+└─────────────────────────────────────────────┘
+</pre>
+
+<h3>11.2 ISR 우선순위</h3>
+<p>
+  QSPI3는 인터럽트 기반으로 동작하며, TX/RX/ERR 각각 ISR을 등록한다.
+</p>
+<table>
+  <tr><th>ISR</th><th>우선순위</th><th>기능</th></tr>
+  <tr><td>DrvSpi_TxISR</td><td>6</td><td>송신 완료 처리</td></tr>
+  <tr><td>DrvSpi_RxISR</td><td>7</td><td>수신 완료 처리</td></tr>
+  <tr><td>DrvSpi_ErrISR</td><td>8</td><td>에러 처리</td></tr>
+</table>
+
+<h3>11.3 실행 흐름</h3>
+<pre>
+AppTask_10ms()  [매 10ms 호출]
+  │
+  ├─ DrvMpu9250_ReadSensors()
+  │    ├─ DrvSpi_ReadBurst() × 6  ← SPI로 6축 Raw 데이터 읽기
+  │    ├─ parseSensorData()        ← Big Endian → sint16 변환
+  │    └─ updateAttitude()         ← Complementary Filter 계산
+  │
+  └─ DrvMpu9250_SendUart()
+       └─ "R:+012.3,P:-005.7,Y:+045.2\r\n" 전송
+</pre>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>12. 자세 계산 (Complementary Filter)</h2>
+
+<h3>12.1 축 매핑 (실측 기반)</h3>
+<p>
+  MPU-9250 보드의 축 인쇄와 실제 동작을 대조하여 매핑을 결정하였다.
+  보드의 Y축 = 전진 방향(코), X축 = 날개 방향으로 장착한다.
+</p>
+
+<table>
+  <tr><th>물리 동작</th><th>가속도 축</th><th>자이로 축</th><th>부호</th></tr>
+  <tr><td>Roll (날개 기울임)</td><td>AX, AZ</td><td>GY (raw[1])</td><td>반전 (-)</td></tr>
+  <tr><td>Pitch (기수 상하)</td><td>AY, AZ</td><td>GX (raw[0])</td><td>반전 (-)</td></tr>
+  <tr><td>Yaw (좌우 회전)</td><td>-</td><td>GZ (raw[2])</td><td>정방향</td></tr>
+</table>
+
+<h3>12.2 Complementary Filter 원리</h3>
+<p>
+  가속도계는 저주파 정확(중력 기반)하지만 진동에 취약하고,
+  자이로스코프는 고주파 정확(각속도 적분)하지만 드리프트가 누적된다.
+  Complementary Filter는 두 센서의 장점을 결합한다.
+</p>
+
+<pre>
+<span class="comment">/* α = 0.96, DT = 0.01s (100Hz) */</span>
+
+<span class="comment">/* 가속도계 기반 각도 (저주파) */</span>
+rollAcc  = atan2(-AX, AZ)
+pitchAcc = atan2(AY, sqrt(AX&sup2; + AZ&sup2;))
+
+<span class="comment">/* Complementary Filter */</span>
+Roll  = &alpha; &times; (Roll  + gyroRate &times; dt) + (1-&alpha;) &times; rollAcc
+Pitch = &alpha; &times; (Pitch + gyroRate &times; dt) + (1-&alpha;) &times; pitchAcc
+
+<span class="comment">/* Yaw: 자이로 적분 only (가속도 보정 불가) */</span>
+Yaw += yawRate &times; dt
+</pre>
+
+<div class="note">
+  <strong>&alpha; = 0.96의 의미:</strong><br>
+  자이로(고주파)에 96% 가중, 가속도(저주파)에 4% 가중.
+  시정수(time constant) = DT / (1-&alpha;) = 0.01 / 0.04 = 0.25초.
+  약 0.25초 이상의 느린 변화는 가속도계가 보정하고,
+  그보다 빠른 변화는 자이로가 추적한다.
+</div>
+
+<h3>12.3 캘리브레이션</h3>
+<p>
+  시작 후 1초간(100회) 정지 상태에서 평균값을 수집하여 오프셋을 보정한다.
+</p>
+
+<table>
+  <tr><th>보정 대상</th><th>방법</th><th>목적</th></tr>
+  <tr><td>가속도 Roll/Pitch 오프셋</td><td>100회 평균 후 차감</td><td>초기 자세 = 0°,0° 기준</td></tr>
+  <tr><td>자이로 X/Y/Z 바이어스</td><td>100회 평균 후 차감</td><td>정지 시 각속도 ≈ 0°/s</td></tr>
+</table>
+
+<h3>12.4 Yaw 드리프트 억제</h3>
+<p>
+  Yaw는 가속도계로 보정할 수 없으므로(중력은 수직 방향만 감지),
+  자이로 적분만으로 계산한다. 드리프트를 줄이기 위해 두 가지 기법을 적용하였다.
+</p>
+
+<pre>
+<span class="define">#define YAW_DEADZONE  1.5f</span>    <span class="comment">/* ±1.5°/s 이하 무시 */</span>
+<span class="define">#define YAW_DECAY     0.998f</span>  <span class="comment">/* 정지 시 감쇠 계수 */</span>
+
+<span class="keyword">if</span> (|yawRate| &gt; YAW_DEADZONE)
+    Yaw += yawRate &times; dt;      <span class="comment">/* 회전 중 → 정상 적분 */</span>
+<span class="keyword">else</span>
+    Yaw &times;= YAW_DECAY;          <span class="comment">/* 정지 중 → 서서히 0 복귀 */</span>
+</pre>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>13. 트러블슈팅 이력</h2>
+
+<table>
+  <tr><th>#</th><th>현상</th><th>원인</th><th>해결</th></tr>
+  <tr>
+    <td>1</td>
+    <td>AX만 정상, 나머지 5축 = 0</td>
+    <td>QSPI3 RX FIFO 오버플로 (14바이트 버스트)</td>
+    <td>2바이트씩 6회 분할 읽기</td>
+  </tr>
+  <tr>
+    <td>2</td>
+    <td>자이로 전축 0, Z가속도 0</td>
+    <td>PWR_MGMT_1/2 레지스터 쓰기 실패<br>(GYRO_STANDBY=1, DISABLE_ZA=1)</td>
+    <td>writeRegVerify() 패턴 도입<br>+ 딜레이 증가</td>
+  </tr>
+  <tr>
+    <td>3</td>
+    <td>Roll/Pitch 방향 반대</td>
+    <td>센서 축 방향과 물리적 장착 방향 불일치</td>
+    <td>자이로/가속도 부호 반전<br>(실측 기반 매핑)</td>
+  </tr>
+  <tr>
+    <td>4</td>
+    <td>Yaw 누적 드리프트</td>
+    <td>자이로 적분 only, 가속도 보정 불가</td>
+    <td>데드존(±1.5°/s) + 감쇠(×0.998)</td>
+  </tr>
+</table>
+
+<hr style="margin-top: 40px;">
+<p style="text-align: center; color: #888; font-size: 9pt;">
+  TC237 QSPI &ndash; MPU-9250 SPI 통신 설계서 &nbsp;|&nbsp; 작성일: 2026-05-03
+</p>
+
+</body>
+</html>

@@ -12,6 +12,8 @@
 #include "DrvTim.h"
 #include "DrvUart.h"
 #include "DrvCan.h"
+#include "DrvSpi.h"
+#include "DrvMpu9250.h"
 #include "Scheduler.h"
 
 /*-----------------------------------------------------------------------------------------------*/
@@ -28,12 +30,17 @@ void core0_main(void)
     DrvTim_Init();
     DrvUart_Init();
     DrvCan_Init();
+    DrvSpi_Init();
 
-    /* 글로벌 인터럽트 Enable — 모든 초기화 완료 후 마지막 수행 */
+    /* 글로벌 인터럽트 Enable — SPI ISR이 동작해야 MPU-9250 통신 가능 */
     IfxCpu_enableInterrupts();
 
-    DrvUart_SendString("=== TC237 CAN Sender ===\r\n");
-    DrvUart_SendString("AN0 ADC -> CAN ID=0x100, 500kbps, 100Hz\r\n");
+    /* MPU-9250 초기화 (인터럽트 활성화 후 수행) */
+    DrvMpu9250_Init();
+
+    DrvUart_SendString("=== TC237 IMU + CAN Sender ===\r\n");
+    DrvUart_SendString("MPU-9250 -> UART (Roll/Pitch/Yaw)\r\n");
+    DrvUart_SendString("AN0 ADC -> CAN ID=0x100, 500kbps\r\n");
     DrvUart_SendString("Ready.\r\n\r\n");
 
     while (1)

@@ -1,11 +1,5 @@
 # Build output
 TriCore Debug (TASKING)/
-TriCore Release (TASKING)/
-TriCore Debug (GCC)/
-TriCore Release (GCC)/
-
-# Eclipse workspace metadata
-.metadata/
 
 # Claude Code internal files
 memory/

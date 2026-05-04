@@ -13,6 +13,8 @@
 #include "DrvTim.h"
 #include "DrvUart.h"
 #include "DrvCan.h"
+#include "DrvMpu9250.h"
+#include "DrvSpi.h"
 
 float32 g_timDutyPercent = 0.0f;
 float32 g_timPeriodSec   = 0.0f;
@@ -44,6 +46,10 @@ void AppTask_10ms(void)
 
     /* AN0 ADC 값 CAN 송신 → TC237_Project_CAN 보드 (100 Hz) */
     DrvCan_SendUint16(DrvAdc_GetResult(0));
+
+    /* MPU-9250 센서 읽기 + Roll/Pitch/Yaw UART 전송 (100 Hz) */
+    DrvMpu9250_ReadSensors();
+    DrvMpu9250_SendUart();
 }
 
 /******************************************************************************/
@@ -52,4 +58,8 @@ void AppTask_10ms(void)
 void AppTask_100ms(void)
 {
     DrvDio_ToggleLed0();
+
+    /* Logic Analyzer 캡처용: WHO_AM_I(0x75) 반복 읽기 (100ms 주기)
+     * 캡처 완료 후 이 코드를 삭제할 것 */
+    (void)DrvSpi_ReadReg(0x75u);
 }
