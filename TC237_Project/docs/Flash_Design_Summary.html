@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>DFLASH 캘리브레이션 드라이버 설계 요약</title>
+<style>
+  body { font-family: '맑은 고딕', 'Malgun Gothic', sans-serif; margin: 40px; line-height: 1.7; color: #222; }
+  h1 { font-size: 22pt; border-bottom: 3px solid #003366; padding-bottom: 8px; color: #003366; }
+  h2 { font-size: 14pt; color: #003366; margin-top: 30px; border-left: 4px solid #003366; padding-left: 10px; }
+  h3 { font-size: 12pt; color: #444; margin-top: 20px; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th { background-color: #003366; color: white; padding: 8px 12px; text-align: left; font-size: 10pt; }
+  td { border: 1px solid #ccc; padding: 8px 12px; font-size: 10pt; }
+  tr:nth-child(even) { background-color: #f5f5f5; }
+  code { background-color: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-family: 'Consolas', monospace; font-size: 10pt; }
+  pre { background-color: #f8f8f8; border: 1px solid #ddd; border-radius: 4px; padding: 14px; font-family: 'Consolas', monospace; font-size: 10pt; line-height: 1.6; overflow-x: auto; }
+  .highlight { background-color: #fff3cd; padding: 10px; border-left: 4px solid #ffc107; margin: 10px 0; font-size: 10pt; }
+  .section { margin-bottom: 30px; }
+  .struct-layout { text-align: center; margin: 15px 0; }
+  .arrow { color: #003366; font-weight: bold; }
+</style>
+</head>
+<body>
+
+<h1>DFLASH 캘리브레이션 드라이버 설계 요약</h1>
+<p><strong>MCU:</strong> Infineon AURIX TC237L &nbsp;|&nbsp; <strong>모듈:</strong> DrvFlash &nbsp;|&nbsp; <strong>파일:</strong> DrvFlash.c / DrvFlash.h</p>
+
+<!-- ===== 1. 개요 ===== -->
+<div class="section">
+<h2>1. 개요</h2>
+<p>
+  DFLASH(Data Flash)를 이용하여 캘리브레이션 데이터(PWM Duty 등)를 비휘발성으로 저장하고,
+  전원 재투입 시 자동으로 복원하는 드라이버이다.
+  UART 명령을 통해 런타임에 값을 변경하고 Flash에 저장/로드할 수 있다.
+</p>
+</div>
+
+<!-- ===== 2. 메모리 맵 ===== -->
+<div class="section">
+<h2>2. 메모리 맵</h2>
+<table>
+  <tr><th>영역</th><th>주소 범위</th><th>크기</th><th>용도</th></tr>
+  <tr><td>DFLASH Sector 0</td><td><code>0xAF000000</code> ~ <code>0xAF001FFF</code></td><td>8 KB</td><td>캘리브레이션 데이터 저장</td></tr>
+  <tr><td>캘리브레이션 페이지</td><td><code>0xAF000000</code> ~ <code>0xAF000007</code></td><td>8 Bytes</td><td>1 페이지 (DFLASH 최소 Write 단위)</td></tr>
+</table>
+</div>
+
+<!-- ===== 3. 데이터 구조체 ===== -->
+<div class="section">
+<h2>3. 데이터 구조체</h2>
+<pre>typedef struct
+{
+    uint8  pwmDuty;      /* PWM Duty 0~100 [%]           (1 byte)  */
+    uint8  reserved1;    /* 예약 (확장용)                (1 byte)  */
+    uint16 reserved2;    /* 예약 (확장용)                (2 bytes) */
+    uint32 magic;        /* 유효성 검증 매직넘버          (4 bytes) */
+} DrvFlash_CalData;      /* 총 8 bytes = 1 DFLASH page             */
+
+#define DRVFLASH_CAL_MAGIC  0xCAFE1234u</pre>
+
+<h3>메모리 배치 (리틀엔디안)</h3>
+<table>
+  <tr><th>Offset</th><th>Byte 0</th><th>Byte 1</th><th>Byte 2</th><th>Byte 3</th><th>Byte 4</th><th>Byte 5</th><th>Byte 6</th><th>Byte 7</th></tr>
+  <tr>
+    <td><code>0xAF000000</code></td>
+    <td>pwmDuty</td><td>reserved1</td><td colspan="2">reserved2</td>
+    <td><code>0x34</code></td><td><code>0x12</code></td><td><code>0xFE</code></td><td><code>0xCA</code></td>
+  </tr>
+  <tr>
+    <td>예: Duty=75</td>
+    <td><code>0x4B</code></td><td><code>0x00</code></td><td><code>0x00</code></td><td><code>0x00</code></td>
+    <td><code>0x34</code></td><td><code>0x12</code></td><td><code>0xFE</code></td><td><code>0xCA</code></td>
+  </tr>
+  <tr>
+    <td>예: Duty=80</td>
+    <td><code>0x50</code></td><td><code>0x00</code></td><td><code>0x00</code></td><td><code>0x00</code></td>
+    <td><code>0x34</code></td><td><code>0x12</code></td><td><code>0xFE</code></td><td><code>0xCA</code></td>
+  </tr>
+</table>
+
+<div class="highlight">
+  <strong>매직넘버의 목적:</strong> Flash 영역에 유효한 데이터가 기록되어 있는지 판별한다.
+  Erase 직후 Flash는 전부 <code>0x00</code>이므로, magic이 <code>0xCAFE1234</code>가 아니면 "저장된 적 없음"으로 판단하여 기본값을 사용한다.
+</div>
+</div>
+
+<!-- ===== 4. Flash Write 시퀀스 ===== -->
+<div class="section">
+<h2>4. Flash Write 시퀀스 (DrvFlash_SaveCalibration)</h2>
+<table>
+  <tr><th>순서</th><th>동작</th><th>API</th><th>설명</th></tr>
+  <tr><td>1</td><td>Endinit 해제</td><td><code>IfxScuWdt_clearCpuEndinit()</code></td><td>Flash 레지스터 접근을 위해 Watchdog 보호 해제</td></tr>
+  <tr><td>2</td><td>Status Clear</td><td><code>IfxFlash_clearStatus(0)</code></td><td>이전 에러 플래그 초기화</td></tr>
+  <tr><td>3</td><td>Sector Erase</td><td><code>IfxFlash_eraseSector()</code></td><td>Sector 0 전체(8KB) 삭제 (Flash는 1→0만 가능)</td></tr>
+  <tr><td>4</td><td>Wait Unbusy</td><td><code>IfxFlash_waitUnbusy()</code></td><td>Erase 완료 대기</td></tr>
+  <tr><td>5</td><td>Enter Page Mode</td><td><code>IfxFlash_enterPageMode()</code></td><td>Flash 컨트롤러를 Page Programming 모드로 전환</td></tr>
+  <tr><td>6</td><td>Load Page</td><td><code>IfxFlash_loadPage2X32()</code></td><td>Assembly Buffer에 8바이트 데이터 로드</td></tr>
+  <tr><td>7</td><td>Write Page</td><td><code>IfxFlash_writePage()</code></td><td>Assembly Buffer → Flash 셀에 기록</td></tr>
+  <tr><td>8</td><td>Wait Unbusy</td><td><code>IfxFlash_waitUnbusy()</code></td><td>Write 완료 대기</td></tr>
+  <tr><td>9</td><td>Endinit 복원</td><td><code>IfxScuWdt_setCpuEndinit()</code></td><td>Watchdog 보호 복원</td></tr>
+  <tr><td>10</td><td>Verify</td><td>포인터 직접 읽기</td><td>기록된 매직넘버 재확인</td></tr>
+</table>
+
+<h3>시퀀스 흐름도</h3>
+<pre>
+  Endinit 해제
+       │
+       ▼
+  Status Clear
+       │
+       ▼
+  Sector Erase ──→ Wait Unbusy
+       │
+       ▼
+  Enter Page Mode
+       │
+       ▼
+  Load Page (8 bytes)
+       │
+       ▼
+  Write Page ─────→ Wait Unbusy
+       │
+       ▼
+  Endinit 복원
+       │
+       ▼
+  Verify (매직넘버 확인)
+</pre>
+</div>
+
+<!-- ===== 5. Flash Read 시퀀스 ===== -->
+<div class="section">
+<h2>5. Flash Read 시퀀스 (DrvFlash_LoadCalibration)</h2>
+<p>DFLASH는 메모리 맵 I/O이므로 별도의 Flash 명령 없이 포인터로 직접 읽는다.</p>
+<pre>
+const DrvFlash_CalData *pFlash = (const DrvFlash_CalData *)0xAF000000;
+
+if (pFlash->magic == 0xCAFE1234)    → 유효 → g_pwmDuty 복원
+if (pFlash->magic != 0xCAFE1234)    → 무효 → 기본값 유지 (FALSE 리턴)
+</pre>
+</div>
+
+<!-- ===== 6. UART 명령 인터페이스 ===== -->
+<div class="section">
+<h2>6. UART 명령 인터페이스</h2>
+<p><strong>통신 설정:</strong> 115200 bps, 8-N-1 &nbsp;|&nbsp; <strong>줄 끝:</strong> CR / LF / CR+LF 모두 가능 &nbsp;|&nbsp; <strong>대소문자:</strong> 대문자만 인식</p>
+<table>
+  <tr><th>명령</th><th>동작</th><th>응답 (성공)</th><th>응답 (실패)</th></tr>
+  <tr><td><code>D=xx</code></td><td>PWM Duty 즉시 변경 (RAM만)</td><td><code>[CAL] Duty=xx</code></td><td>-</td></tr>
+  <tr><td><code>SAVE</code></td><td>RAM → Flash 저장</td><td><code>[CAL] Saved! Duty=xx</code></td><td><code>[CAL] Save FAILED!</code></td></tr>
+  <tr><td><code>LOAD</code></td><td>Flash → RAM 복원</td><td><code>[CAL] Loaded! Duty=xx</code></td><td><code>[CAL] No valid data in Flash</code></td></tr>
+  <tr><td><code>CAL?</code></td><td>현재 Duty 값 조회</td><td><code>[CAL] Duty=xx</code></td><td>-</td></tr>
+</table>
+</div>
+
+<!-- ===== 7. 사용 시나리오 ===== -->
+<div class="section">
+<h2>7. 사용 시나리오</h2>
+<table>
+  <tr><th>순서</th><th>조작</th><th>결과</th></tr>
+  <tr><td>1</td><td>전원 ON</td><td>부팅 시 <code>DrvFlash_LoadCalibration()</code> 자동 호출 (첫 실행 시 기본값)</td></tr>
+  <tr><td>2</td><td>터미널에서 <code>D=75</code> 입력</td><td>PWM Duty 75%로 즉시 변경 (RAM만)</td></tr>
+  <tr><td>3</td><td>터미널에서 <code>CAL?</code> 입력</td><td>현재 값 확인 → <code>[CAL] Duty=75</code></td></tr>
+  <tr><td>4</td><td>터미널에서 <code>SAVE</code> 입력</td><td>Flash에 저장 → <code>[CAL] Saved! Duty=75</code></td></tr>
+  <tr><td>5</td><td>전원 OFF → ON</td><td>자동으로 75% 복원</td></tr>
+</table>
+
+<div class="highlight">
+  <strong>주의:</strong> <code>D=75</code>만으로는 Flash에 저장되지 않는다.
+  반드시 <code>SAVE</code> 명령을 실행해야 전원을 꺼도 값이 유지된다.
+</div>
+</div>
+
+<!-- ===== 8. 디버거 메모리 확인 ===== -->
+<div class="section">
+<h2>8. 디버거 메모리 확인</h2>
+<p>winIDEA Memory 창에서 <code>0xAF000000</code> 주소를 Hex로 조회하면 다음과 같이 확인할 수 있다.</p>
+<table>
+  <tr><th>Address</th><th>0 - 3 (Hex)</th><th>4 - 7 (Hex)</th><th>해석</th></tr>
+  <tr><td><code>AF000000</code></td><td><code>4B000000</code></td><td><code>3412FECA</code></td><td>Duty=75 (0x4B), Magic OK</td></tr>
+  <tr><td><code>AF000000</code></td><td><code>50000000</code></td><td><code>3412FECA</code></td><td>Duty=80 (0x50), Magic OK</td></tr>
+  <tr><td><code>AF000000</code></td><td><code>00000000</code></td><td><code>00000000</code></td><td>Erase 상태 (유효 데이터 없음)</td></tr>
+</table>
+</div>
+
+<!-- ===== 9. 주의사항 ===== -->
+<div class="section">
+<h2>9. 주의사항</h2>
+<table>
+  <tr><th>항목</th><th>내용</th></tr>
+  <tr><td>Erase 단위</td><td>DFLASH Sector 0 = 8KB 전체가 삭제됨 (페이지 단위 삭제 불가)</td></tr>
+  <tr><td>Write 단위</td><td>DFLASH 1 페이지 = 8 Bytes (PFLASH 32 Bytes와 다름)</td></tr>
+  <tr><td>수명</td><td>DFLASH Erase 사이클 약 10만회 — 빈번한 저장 지양</td></tr>
+  <tr><td>명령 형식</td><td>대문자만 인식, 정확한 길이 매칭 필요 (뒤 공백 불가)</td></tr>
+</table>
+</div>
+
+</body>
+</html>

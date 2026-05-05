@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>7.5 AI와 함께하는 TC237 Flash 실습 — DFLASH 캘리브레이션</title>
+<style>
+  body { font-family: '맑은 고딕', 'Malgun Gothic', sans-serif; margin: 40px 50px; line-height: 1.8; color: #222; max-width: 900px; }
+  h1 { font-size: 20pt; border-bottom: 3px solid #003366; padding-bottom: 8px; color: #003366; }
+  h2 { font-size: 14pt; color: #003366; margin-top: 36px; border-left: 4px solid #003366; padding-left: 10px; }
+  h3 { font-size: 12pt; color: #333; margin-top: 22px; }
+  p { margin: 8px 0; font-size: 10.5pt; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+  th { background-color: #003366; color: white; padding: 8px 12px; text-align: left; font-size: 10pt; }
+  td { border: 1px solid #ccc; padding: 7px 12px; font-size: 10pt; }
+  tr:nth-child(even) { background-color: #f5f5f5; }
+  code { background-color: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-family: 'Consolas', 'Courier New', monospace; font-size: 10pt; }
+  pre { background-color: #f8f8f8; border: 1px solid #ddd; border-radius: 4px; padding: 14px 18px; font-family: 'Consolas', 'Courier New', monospace; font-size: 9.5pt; line-height: 1.65; overflow-x: auto; }
+  .note { background-color: #e8f4fd; border-left: 4px solid #2196F3; padding: 10px 14px; margin: 14px 0; font-size: 10pt; }
+  .warn { background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 10px 14px; margin: 14px 0; font-size: 10pt; }
+  .prompt { background-color: #f0f0f0; border: 1px solid #bbb; border-radius: 6px; padding: 12px 16px; margin: 14px 0; font-size: 10pt; font-style: italic; }
+  .flow-box { background-color: #fafafa; border: 2px solid #003366; border-radius: 6px; padding: 16px 20px; margin: 14px 0; }
+  .caption { font-size: 9pt; color: #666; text-align: center; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<!-- ============================================================ -->
+<h1>7.5 AI와 함께하는 TC237 Flash 실습</h1>
+<!-- ============================================================ -->
+
+<p>
+이번 절에서는 DFLASH를 이용한 <strong>캘리브레이션 데이터 저장/복원</strong> 기능을 구현합니다.
+인피니언 ILLD의 Flash API를 직접 사용하되, 실제 현업에서 쓰이는 패턴 — 매직넘버 검증, UART 명령 인터페이스, 부팅 시 자동 복원 — 을 조합하여 실용적인 드라이버를 만듭니다.
+</p>
+<p>
+Claude Code에게 아래와 같이 요청합니다.
+</p>
+<div class="prompt">
+"DFLASH에 PWM Duty 값을 저장하고, 전원을 꺼도 유지되도록 캘리브레이션 드라이버를 만들어줘.
+UART로 D=75, SAVE, LOAD, CAL? 명령을 보내서 제어할 수 있게 해줘."
+</div>
+
+<!-- ============================================================ -->
+<h2>PFLASH vs DFLASH — 왜 DFLASH를 선택하는가</h2>
+<!-- ============================================================ -->
+
+<p>
+TC237에는 두 종류의 Flash가 있습니다. 코드가 실행되는 PFLASH(Program Flash)와 데이터 저장 전용인 DFLASH(Data Flash)입니다.
+</p>
+
+<table>
+  <tr><th>항목</th><th>PFLASH (PF0)</th><th>DFLASH (DF0)</th></tr>
+  <tr><td>용도</td><td>프로그램 코드 저장</td><td><strong>데이터 저장 (캘리브레이션, 설정값)</strong></td></tr>
+  <tr><td>시작 주소</td><td><code>0xA0000000</code></td><td><code>0xAF000000</code></td></tr>
+  <tr><td>Page 크기</td><td>32 Bytes</td><td><strong>8 Bytes</strong></td></tr>
+  <tr><td>Erase 단위</td><td>16 KB Sector</td><td><strong>8 KB Sector</strong></td></tr>
+  <tr><td>Write 중 코드 실행</td><td>같은 뱅크에서 실행 불가 (PSPR 복사 필요)</td><td><strong>별도 뱅크이므로 안전</strong></td></tr>
+  <tr><td>Erase 수명</td><td>~10만 회</td><td>~10만 회</td></tr>
+</table>
+
+<p>
+캘리브레이션 데이터를 저장할 때는 DFLASH가 적합합니다. 코드가 실행되는 PFLASH와 물리적으로 분리되어 있으므로,
+<strong>Write 중에도 프로그램이 정상 동작</strong>합니다.
+PFLASH에 쓰려면 함수를 PSPR(RAM)에 복사해야 하지만, DFLASH는 그런 작업이 필요 없습니다.
+iLLD의 Flash API를 직접 호출하면 됩니다.
+</p>
+
+<!-- ============================================================ -->
+<h2>데이터 구조체 설계 — 매직넘버 패턴</h2>
+<!-- ============================================================ -->
+
+<p>
+Flash에 저장할 데이터를 구조체로 정의합니다. DFLASH의 최소 Write 단위인 <strong>8바이트</strong>에 맞춰 설계합니다.
+</p>
+
+<pre>typedef struct
+{
+    uint8  pwmDuty;      /* PWM Duty 0~100 [%]           (1 byte)  */
+    uint8  reserved1;    /* 예약 (확장용)                (1 byte)  */
+    uint16 reserved2;    /* 예약 (확장용)                (2 bytes) */
+    uint32 magic;        /* 유효성 검증 매직넘버          (4 bytes) */
+} DrvFlash_CalData;      /* 총 8 bytes = 1 DFLASH page             */
+
+#define DRVFLASH_CAL_MAGIC  0xCAFE1234u</pre>
+
+<p>
+여기서 핵심은 <strong>magic 필드</strong>입니다. Flash는 Erase 직후 전부 <code>0x00</code>(DFLASH) 상태입니다.
+pwmDuty가 0이라면, 그것이 "사용자가 0%로 저장한 것"인지 "한 번도 저장한 적 없는 빈 Flash"인지 구분할 수 없습니다.
+매직넘버 <code>0xCAFE1234</code>가 함께 기록되어 있으면 유효한 데이터로 인정하고, 아니면 무시합니다.
+</p>
+
+<h3>메모리 배치 (리틀엔디안)</h3>
+<p>
+구조체가 Flash에 기록되면 아래와 같이 배치됩니다. TriCore는 리틀엔디안이므로 바이트 순서에 주의합니다.
+</p>
+
+<table>
+  <tr><th>Offset</th><th>+0</th><th>+1</th><th>+2</th><th>+3</th><th>+4</th><th>+5</th><th>+6</th><th>+7</th></tr>
+  <tr>
+    <td>필드</td>
+    <td>pwmDuty</td><td>reserved1</td><td colspan="2">reserved2</td>
+    <td colspan="4">magic (리틀엔디안)</td>
+  </tr>
+  <tr>
+    <td>Duty=75</td>
+    <td><code>4B</code></td><td><code>00</code></td><td><code>00</code></td><td><code>00</code></td>
+    <td><code>34</code></td><td><code>12</code></td><td><code>FE</code></td><td><code>CA</code></td>
+  </tr>
+  <tr>
+    <td>Duty=80</td>
+    <td><code>50</code></td><td><code>00</code></td><td><code>00</code></td><td><code>00</code></td>
+    <td><code>34</code></td><td><code>12</code></td><td><code>FE</code></td><td><code>CA</code></td>
+  </tr>
+  <tr>
+    <td>Erase 상태</td>
+    <td><code>00</code></td><td><code>00</code></td><td><code>00</code></td><td><code>00</code></td>
+    <td><code>00</code></td><td><code>00</code></td><td><code>00</code></td><td><code>00</code></td>
+  </tr>
+</table>
+
+<p>
+디버거 Memory 창에서 <code>0xAF000000</code>을 Hex로 보면, Duty=75일 때 <code>4B000000 3412FECA</code>로 표시됩니다.
+<code>0x4B</code> = 십진수 75, <code>3412FECA</code>는 리틀엔디안으로 읽으면 <code>0xCAFE1234</code>입니다.
+</p>
+
+<!-- ============================================================ -->
+<h2>Flash Write — DrvFlash_SaveCalibration 코드 분석</h2>
+<!-- ============================================================ -->
+
+<p>
+Flash에 데이터를 쓰는 전체 과정을 코드와 함께 살펴봅니다.
+DFLASH는 코드 실행 영역과 분리되어 있으므로 PFLASH처럼 PSPR 복사가 필요 없고,
+iLLD API를 직접 호출하면 됩니다.
+</p>
+
+<pre>boolean DrvFlash_SaveCalibration(void)
+{
+    /* ① 저장할 데이터 준비 — 구조체를 두 개의 32-bit 워드로 분리 */
+    DrvFlash_CalData cal;
+    cal.pwmDuty   = g_pwmDuty;
+    cal.reserved1 = 0u;
+    cal.reserved2 = 0u;
+    cal.magic     = DRVFLASH_CAL_MAGIC;     /* 0xCAFE1234 */
+
+    uint32 wordL = *((uint32 *)&cal);       /* 하위 4바이트: [4B][00][00][00] */
+    uint32 wordU = *((uint32 *)&cal + 1);   /* 상위 4바이트: [34][12][FE][CA] */</pre>
+
+<p>
+<code>IfxFlash_loadPage2X32</code>는 32-bit 워드 두 개(총 8바이트)를 받습니다.
+구조체 8바이트를 하위/상위 워드로 쪼개서 전달합니다.
+</p>
+
+<pre>    /* ② Endinit 해제 — Flash 레지스터 접근 보호 해제 */
+    uint16 endinitPw = IfxScuWdt_getCpuWatchdogPassword();
+    IfxScuWdt_clearCpuEndinit(endinitPw);</pre>
+
+<p>
+TC237은 안전장치로 Endinit 비트가 설정되어 있으면 Flash 제어 레지스터에 접근할 수 없습니다.
+Flash 조작 전에 반드시 해제하고, 완료 후 복원해야 합니다.
+</p>
+
+<pre>    /* ③ 상태 클리어 */
+    IfxFlash_clearStatus(0);
+
+    /* ④ Sector 0 Erase — 8KB 전체가 지워짐 */
+    IfxFlash_eraseSector(CAL_FLASH_ADDR);       /* 0xAF000000 */
+    IfxFlash_waitUnbusy(0, IfxFlash_FlashType_D0);</pre>
+
+<p>
+Flash는 0→1로 비트를 바꿀 수 없습니다. 이미 데이터가 있는 곳에 덮어쓰려면 먼저 Erase로 전체를 <code>0x00</code>으로 초기화해야 합니다.
+DFLASH Sector 0은 8KB(0xAF000000~0xAF001FFF) 전체가 한 번에 지워집니다.
+<code>waitUnbusy</code>로 Erase 하드웨어 동작이 끝날 때까지 대기합니다.
+</p>
+
+<pre>    /* ⑤ Page Mode 진입 → 데이터 로드 → Page Write */
+    IfxFlash_enterPageMode(CAL_FLASH_ADDR);
+    IfxFlash_loadPage2X32(CAL_FLASH_ADDR, wordL, wordU);
+    IfxFlash_writePage(CAL_FLASH_ADDR);
+    IfxFlash_waitUnbusy(0, IfxFlash_FlashType_D0);</pre>
+
+<p>
+이 세 단계가 실제 데이터를 쓰는 핵심입니다.
+</p>
+
+<table>
+  <tr><th>API</th><th>동작</th></tr>
+  <tr><td><code>enterPageMode</code></td><td>Flash 컨트롤러를 Page Programming 모드로 전환</td></tr>
+  <tr><td><code>loadPage2X32</code></td><td>Assembly Buffer에 8바이트 데이터 적재 (DFLASH 1 Page = 8 Bytes)</td></tr>
+  <tr><td><code>writePage</code></td><td>Assembly Buffer 내용을 실제 Flash 셀에 확정 기록</td></tr>
+</table>
+
+<div class="note">
+<strong>PFLASH와의 차이:</strong> PFLASH는 1 Page = 32바이트이므로 <code>loadPage2X32</code>를 4번 호출해서 버퍼를 채워야 합니다.
+DFLASH는 1 Page = 8바이트이므로 <code>loadPage2X32</code> 한 번이면 됩니다.
+32바이트 배수 맞춤이나 나머지 바이트 처리도 필요 없어서 훨씬 간단합니다.
+</div>
+
+<pre>    /* ⑥ Endinit 복원 */
+    IfxScuWdt_setCpuEndinit(endinitPw);
+
+    /* ⑦ 검증 — 기록된 매직넘버를 다시 읽어서 확인 */
+    const DrvFlash_CalData *pVerify = (const DrvFlash_CalData *)CAL_FLASH_ADDR;
+    if (pVerify->magic != DRVFLASH_CAL_MAGIC)
+        return FALSE;
+
+    return TRUE;
+}</pre>
+
+<p>
+Write가 끝나면 해당 주소를 다시 읽어서 매직넘버가 정상적으로 기록되었는지 검증합니다.
+하드웨어 오류나 전원 불안정으로 Write가 실패할 수 있기 때문입니다.
+</p>
+
+<h3>Write 시퀀스 흐름도</h3>
+
+<div class="flow-box">
+<pre style="background:none; border:none; padding:0; margin:0;">
+  데이터 준비 (구조체 → wordL, wordU)
+       │
+  Endinit 해제
+       │
+  IfxFlash_clearStatus ─────── 이전 에러 플래그 초기화
+       │
+  IfxFlash_eraseSector ─────── Sector 0 전체(8KB) Erase
+       │
+  IfxFlash_waitUnbusy ──────── Erase 완료 대기
+       │
+  IfxFlash_enterPageMode ───── Page Programming 모드 진입
+       │
+  IfxFlash_loadPage2X32 ────── Assembly Buffer에 8바이트 적재
+       │
+  IfxFlash_writePage ──────── Buffer → Flash 셀 기록
+       │
+  IfxFlash_waitUnbusy ──────── Write 완료 대기
+       │
+  Endinit 복원
+       │
+  Verify (매직넘버 재확인)
+</pre>
+</div>
+
+<!-- ============================================================ -->
+<h2>Flash Read — DrvFlash_LoadCalibration 코드 분석</h2>
+<!-- ============================================================ -->
+
+<p>
+DFLASH는 메모리 맵 I/O입니다. CPU 주소 공간에 직접 매핑되어 있으므로, 특별한 Flash 명령 없이 포인터로 읽으면 됩니다.
+</p>
+
+<pre>boolean DrvFlash_LoadCalibration(void)
+{
+    /* DFLASH 주소를 직접 읽기 (메모리 맵) */
+    const DrvFlash_CalData *pFlash = (const DrvFlash_CalData *)CAL_FLASH_ADDR;
+
+    /* 매직넘버로 유효성 검증 */
+    if (pFlash->magic != DRVFLASH_CAL_MAGIC)
+    {
+        return FALSE;   /* Flash에 유효한 데이터 없음 → 기본값 유지 */
+    }
+
+    /* Flash → RAM 복원 */
+    if (pFlash->pwmDuty <= 100u)
+    {
+        g_pwmDuty = pFlash->pwmDuty;
+    }
+
+    return TRUE;
+}</pre>
+
+<p>
+로직은 단순합니다. <code>0xAF000000</code>을 구조체 포인터로 캐스팅하여 읽고, magic 값이 <code>0xCAFE1234</code>이면 유효한 데이터로 판단합니다.
+pwmDuty의 범위 검증(0~100)도 추가하여, Flash 데이터가 손상된 경우에도 안전하게 동작합니다.
+</p>
+
+<!-- ============================================================ -->
+<h2>부팅 시 자동 복원 — Cpu0_Main.c</h2>
+<!-- ============================================================ -->
+
+<p>
+드라이버 초기화가 끝난 후, <code>DrvFlash_LoadCalibration()</code>을 한 번 호출합니다.
+Flash에 유효한 데이터가 있으면 자동으로 복원되고, 없으면 기본값을 사용합니다.
+</p>
+
+<pre>void core0_main(void)
+{
+    /* Driver 초기화 */
+    DrvIntc_Init();
+    DrvDio_Init();
+    DrvAdc_Init();
+    DrvPwm_Init();
+    ...
+    IfxCpu_enableInterrupts();
+
+    /* Flash에서 캘리브레이션 데이터 복원 */
+    if (DrvFlash_LoadCalibration())
+    {
+        DrvUart_SendString("[CAL] Flash data loaded.\r\n");
+    }
+    else
+    {
+        DrvUart_SendString("[CAL] No saved data, using defaults.\r\n");
+    }
+
+    DrvUart_SendString("=== TC237 Flash Calibration Demo ===\r\n");
+    DrvUart_SendString("Commands: D=xx, SAVE, LOAD, CAL?\r\n");
+
+    while (1)
+    {
+        Scheduler_Run();
+    }
+}</pre>
+
+<p>
+UART로 부팅 메시지를 출력하여, Flash 복원 성공 여부를 터미널에서 바로 확인할 수 있습니다.
+</p>
+
+<!-- ============================================================ -->
+<h2>UART 명령 파서 — AppTask.c</h2>
+<!-- ============================================================ -->
+
+<p>
+UART를 단순 에코가 아니라 <strong>명령 채널</strong>로 활용합니다.
+1ms Task에서 수신 바이트를 버퍼에 축적하고, Enter(CR/LF)가 들어오면 명령을 파싱합니다.
+</p>
+
+<h3>수신 구조</h3>
+<pre>void AppTask_1ms(void)
+{
+    uint8 rxByte;
+    while (DrvUart_ReceiveByte(&rxByte))
+    {
+        if (rxByte == '\n' || rxByte == '\r')
+        {
+            if (s_cmdIdx > 0u)
+            {
+                processCommand();    /* 명령 처리 */
+                s_cmdIdx = 0u;       /* 버퍼 초기화 */
+            }
+        }
+        else
+        {
+            if (s_cmdIdx < (CMD_BUF_SIZE - 1u))
+            {
+                s_cmdBuf[s_cmdIdx] = rxByte;
+                s_cmdIdx++;
+            }
+        }
+    }
+}</pre>
+
+<p>
+32바이트 버퍼에 수신 데이터를 쌓다가 줄바꿈 문자가 오면 <code>processCommand()</code>를 호출합니다.
+1ms마다 폴링하므로 115200 bps(약 11.5KB/s) 속도에서 바이트 유실 없이 처리할 수 있습니다.
+</p>
+
+<h3>명령 처리</h3>
+<table>
+  <tr><th>명령</th><th>파싱 조건</th><th>동작</th><th>응답</th></tr>
+  <tr>
+    <td><code>D=xx</code></td>
+    <td>첫 두 글자가 <code>D=</code>, 뒤에 숫자</td>
+    <td><code>g_pwmDuty</code> 즉시 변경 (RAM만)</td>
+    <td><code>[CAL] Duty=75</code></td>
+  </tr>
+  <tr>
+    <td><code>SAVE</code></td>
+    <td>정확히 4글자 <code>SAVE</code></td>
+    <td><code>DrvFlash_SaveCalibration()</code> 호출</td>
+    <td><code>[CAL] Saved! Duty=75</code></td>
+  </tr>
+  <tr>
+    <td><code>LOAD</code></td>
+    <td>정확히 4글자 <code>LOAD</code></td>
+    <td><code>DrvFlash_LoadCalibration()</code> 호출</td>
+    <td><code>[CAL] Loaded! Duty=75</code></td>
+  </tr>
+  <tr>
+    <td><code>CAL?</code></td>
+    <td>정확히 4글자 <code>CAL?</code></td>
+    <td>현재 Duty 값 조회</td>
+    <td><code>[CAL] Duty=75</code></td>
+  </tr>
+</table>
+
+<div class="warn">
+<strong>주의:</strong> 대문자만 인식합니다. <code>save</code>, <code>d=75</code>는 <code>[ERR] Unknown</code>으로 처리됩니다.
+뒤에 공백이 붙어도(<code>SAVE </code>) 길이가 맞지 않아 실패합니다.
+</div>
+
+<p>
+<code>D=xx</code> 명령의 숫자 파싱은 <code>parseUint8</code> 함수가 처리합니다.
+ASCII 문자를 한 자리씩 읽으면서 십진수로 변환하고, 100을 초과하면 100으로 클램핑합니다.
+</p>
+
+<pre>static uint8 parseUint8(const uint8 *str)
+{
+    uint16 val = 0u;
+    while (*str >= '0' && *str <= '9')
+    {
+        val = val * 10u + (*str - '0');
+        str++;
+    }
+    if (val > 100u) val = 100u;    /* Duty 범위 제한 */
+    return (uint8)val;
+}</pre>
+
+<!-- ============================================================ -->
+<h2>실습 시나리오</h2>
+<!-- ============================================================ -->
+
+<p>
+터미널 프로그램(115200 bps, 8-N-1)을 열고 아래 순서대로 진행합니다.
+</p>
+
+<table>
+  <tr><th>순서</th><th>입력</th><th>기대 응답</th><th>설명</th></tr>
+  <tr><td>1</td><td>(전원 ON)</td><td><code>[CAL] No saved data, using defaults.</code></td><td>첫 실행: Flash 비어있음</td></tr>
+  <tr><td>2</td><td><code>D=75</code></td><td><code>[CAL] Duty=75</code></td><td>PWM 75%로 변경 (RAM만)</td></tr>
+  <tr><td>3</td><td><code>CAL?</code></td><td><code>[CAL] Duty=75</code></td><td>현재 값 확인</td></tr>
+  <tr><td>4</td><td><code>SAVE</code></td><td><code>[CAL] Saved! Duty=75</code></td><td>Flash에 기록</td></tr>
+  <tr><td>5</td><td>(전원 OFF → ON)</td><td><code>[CAL] Flash data loaded.</code></td><td>자동 복원 성공</td></tr>
+  <tr><td>6</td><td><code>CAL?</code></td><td><code>[CAL] Duty=75</code></td><td>75%가 유지됨을 확인</td></tr>
+</table>
+
+<h3>디버거 메모리 확인</h3>
+<p>
+winIDEA Memory 창에서 <code>0xAF000000</code>을 Hex로 조회하면 기록된 데이터를 직접 확인할 수 있습니다.
+</p>
+
+<table>
+  <tr><th>상태</th><th>0xAF000000 (0-3)</th><th>0xAF000004 (4-7)</th><th>해석</th></tr>
+  <tr><td>Duty=75 저장</td><td><code>4B000000</code></td><td><code>3412FECA</code></td><td>0x4B=75, Magic OK</td></tr>
+  <tr><td>Duty=80 저장</td><td><code>50000000</code></td><td><code>3412FECA</code></td><td>0x50=80, Magic OK</td></tr>
+  <tr><td>Erase 상태</td><td><code>00000000</code></td><td><code>00000000</code></td><td>유효 데이터 없음</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2>파일 구성 요약</h2>
+<!-- ============================================================ -->
+
+<table>
+  <tr><th>파일</th><th>역할</th><th>주요 변경</th></tr>
+  <tr>
+    <td><code>DrvFlash.h</code></td>
+    <td>헤더 (구조체, 매직넘버, API 선언)</td>
+    <td>신규 생성</td>
+  </tr>
+  <tr>
+    <td><code>DrvFlash.c</code></td>
+    <td>DFLASH 캘리브레이션 드라이버</td>
+    <td>신규 생성 — <code>SaveCalibration</code>, <code>LoadCalibration</code></td>
+  </tr>
+  <tr>
+    <td><code>AppTask.c</code></td>
+    <td>Application Task</td>
+    <td>UART echo → 명령 파서로 변경 (<code>D=xx</code>, <code>SAVE</code>, <code>LOAD</code>, <code>CAL?</code>)</td>
+  </tr>
+  <tr>
+    <td><code>Cpu0_Main.c</code></td>
+    <td>메인 함수</td>
+    <td>부팅 시 <code>DrvFlash_LoadCalibration()</code> 호출 추가</td>
+  </tr>
+</table>
+
+<!-- ============================================================ -->
+<h2>PFLASH 예제와의 비교</h2>
+<!-- ============================================================ -->
+
+<p>
+인피니언 ILLD FlashDemo 예제에서 PFLASH에 쓸 때와 우리 코드에서 DFLASH에 쓸 때의 차이를 정리합니다.
+</p>
+
+<table>
+  <tr><th>항목</th><th>PFLASH (FlashDemo 예제)</th><th>DFLASH (DrvFlash 드라이버)</th></tr>
+  <tr><td>PSPR 복사</td><td>필요 — <code>copyFlashRoutinesToPspr()</code></td><td><strong>불필요</strong> — 코드 실행 영역과 분리</td></tr>
+  <tr><td>함수 호출 방식</td><td>함수포인터 구조체 경유</td><td><strong>iLLD API 직접 호출</strong></td></tr>
+  <tr><td>인터럽트</td><td><code>IfxCpu_disableInterrupts()</code> 필요</td><td>권장이지만 필수 아님</td></tr>
+  <tr><td>Page 크기</td><td>32 Bytes (loadPage2X32 × 4번)</td><td><strong>8 Bytes</strong> (loadPage2X32 × 1번)</td></tr>
+  <tr><td>비배수 처리</td><td>나머지 바이트 패딩 필요</td><td><strong>불필요</strong> — 구조체가 정확히 8바이트</td></tr>
+  <tr><td>Endinit</td><td>필요</td><td>필요</td></tr>
+  <tr><td>코드 복잡도</td><td>높음 (함수포인터 + PSPR + 패딩)</td><td><strong>낮음</strong> (10줄 이내 핵심 로직)</td></tr>
+</table>
+
+<div class="note">
+<strong>정리:</strong> 캘리브레이션 데이터처럼 소량의 설정값을 저장하는 용도에는 DFLASH가 적합합니다.
+PFLASH 예제의 PSPR 복사, 함수포인터 패턴, 32바이트 패딩 처리가 모두 불필요해지므로 코드가 훨씬 간결해집니다.
+iLLD API를 직접 사용하되, 매직넘버 검증과 UART 명령 인터페이스를 조합하면 실용적인 캘리브레이션 시스템을 만들 수 있습니다.
+</div>
+
+</body>
+</html>
