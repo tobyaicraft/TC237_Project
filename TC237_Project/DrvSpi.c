@@ -4,15 +4,11 @@
  *
  * - QSPI3 모듈을 SPI Master 모드로 초기화
  * - MPU-9250 통신: CPOL=0, CPHA=0, MSB first, 1 MHz
- * - CS(P22.2)는 GPIO 수동 제어
+ * - CS(P22.2)는 QSPI3 SLSO12 하드웨어 자동 제어
  *********************************************************************************************************************/
 #include "DrvSpi.h"
 #include "Qspi/SpiMaster/IfxQspi_SpiMaster.h"
 #include "IfxPort.h"
-
-/* CS 핀: P22.2 (GPIO 수동 제어) */
-#define CS_PORT  &MODULE_P22
-#define CS_PIN   2u
 
 /******************************************************************************/
 /*                           Module Variables                                 */
@@ -39,28 +35,13 @@ IFX_INTERRUPT(DrvSpi_ErrISR, 0, DRVSPI_ERR_PRIORITY)
     IfxQspi_SpiMaster_isrError(&s_spiMaster);
 }
 
-/******************************************************************************/
-/*                           CS 제어                                          */
-/******************************************************************************/
-static void DrvSpi_CsLow(void)
-{
-    IfxPort_setPinLow(CS_PORT, CS_PIN);
-}
-
-static void DrvSpi_CsHigh(void)
-{
-    IfxPort_setPinHigh(CS_PORT, CS_PIN);
-}
+/* CS는 QSPI3 SLSO12 (P22.2) 하드웨어 자동 제어 — 수동 함수 불필요 */
 
 /******************************************************************************/
 /*                           Functions                                        */
 /******************************************************************************/
 void DrvSpi_Init(void)
 {
-    /* ── CS 핀을 GPIO 출력으로 설정 (High = 비활성) ── */
-    IfxPort_setPinModeOutput(CS_PORT, CS_PIN, IfxPort_OutputMode_pushPull, IfxPort_OutputIdx_general);
-    DrvSpi_CsHigh();
-
     /* ── 모듈 설정 ── */
     IfxQspi_SpiMaster_Config masterCfg;
     IfxQspi_SpiMaster_initModuleConfig(&masterCfg, &MODULE_QSPI3);
@@ -89,11 +70,23 @@ void DrvSpi_Init(void)
     IfxQspi_SpiMaster_initChannelConfig(&chCfg, &s_spiMaster);
 
     chCfg.ch.baudrate            = 1000000;
-    chCfg.ch.mode.clockPolarity  = 0;
-    chCfg.ch.mode.shiftClock     = 1;
-    chCfg.ch.mode.dataHeading    = 1;
-    chCfg.ch.mode.dataWidth      = 8;
-    chCfg.ch.mode.autoCS         = 0;
+    chCfg.ch.mode.clockPolarity  = 0;       /* CPOL=0: 클럭 Idle = Low */
+    chCfg.ch.mode.shiftClock     = 1;       /* 데이터 Shift = Trailing Edge (Falling) */
+    chCfg.ch.mode.dataHeading    = 1;       /* MSB first */
+    chCfg.ch.mode.dataWidth      = 8;       /* 8-bit 프레임 */
+
+    /* Leading Delay: CS Low → 첫 SCK까지 최소 8ns 보장 (1클럭 = 1000ns, 충분) */
+    chCfg.ch.mode.csLeadDelay   = IfxQspi_SlsoTiming_1;
+    /* Trailing Delay: 마지막 SCK → CS High까지 최소 500ns 보장 (2클럭 = 2000ns, 마진 확보) */
+    chCfg.ch.mode.csTrailDelay  = IfxQspi_SlsoTiming_2;
+
+    /* SLSO12 (P22.2) 하드웨어 자동 CS */
+    const IfxQspi_SpiMaster_Output slsOutput = {
+        &IfxQspi3_SLSO12_P22_2_OUT,
+        IfxPort_OutputMode_pushPull,
+        IfxPort_PadDriver_cmosAutomotiveSpeed1
+    };
+    chCfg.sls.output = slsOutput;
 
     IfxQspi_SpiMaster_initChannel(&s_spiChannel, &chCfg);
 
@@ -126,11 +119,9 @@ uint8 DrvSpi_ReadReg(uint8 regAddr)
     txBuf[0] = 0x80u | regAddr;
     txBuf[1] = 0x00u;
 
-    DrvSpi_CsLow();
     DrvSpi_WaitReady();
     IfxQspi_SpiMaster_exchange(&s_spiChannel, txBuf, rxBuf, 2);
     DrvSpi_WaitReady();
-    DrvSpi_CsHigh();
 
     return rxBuf[1];
 }
@@ -145,11 +136,9 @@ void DrvSpi_WriteReg(uint8 regAddr, uint8 data)
     txBuf[0] = regAddr & 0x7Fu;
     txBuf[1] = data;
 
-    DrvSpi_CsLow();
     DrvSpi_WaitReady();
     IfxQspi_SpiMaster_exchange(&s_spiChannel, txBuf, NULL_PTR, 2);
     DrvSpi_WaitReady();
-    DrvSpi_CsHigh();
 }
 
 /*---------------------------------------------------------------------------*/
@@ -168,11 +157,9 @@ void DrvSpi_ReadBurst(uint8 regAddr, uint8 *buf, uint16 len)
         txBuf[i] = 0x00u;
     }
 
-    DrvSpi_CsLow();
     DrvSpi_WaitReady();
     IfxQspi_SpiMaster_exchange(&s_spiChannel, txBuf, rxBuf, totalLen);
     DrvSpi_WaitReady();
-    DrvSpi_CsHigh();
 
     for (i = 0u; i < len; i++)
     {

@@ -131,6 +131,8 @@ static void processCommand(void)
 /******************************************************************************/
 void AppTask_1ms(void)
 {
+    /* TODO: Flash 명령 파서 — SPI/IMU 테스트 중 임시 비활성화 */
+#if 0
     /* UART 수신 → 라인 버퍼에 축적, '\n' 수신 시 명령 처리 */
     uint8 rxByte;
     while (DrvUart_ReceiveByte(&rxByte))
@@ -152,6 +154,7 @@ void AppTask_1ms(void)
             }
         }
     }
+#endif
 }
 
 /******************************************************************************/
@@ -168,8 +171,9 @@ void AppTask_10ms(void)
     /* AN0 ADC 값 CAN 송신 → TC237_Project_CAN 보드 (100 Hz) */
     DrvCan_SendUint16(DrvAdc_GetResult(0));
 
-    /* MPU-9250 센서 읽기 (UART 전송은 제거 — UART를 명령 채널로 사용) */
+    /* MPU-9250 센서 읽기 + UART 전송 (R:±xxx.x,P:±xxx.x,Y:±xxx.x) */
     DrvMpu9250_ReadSensors();
+    DrvMpu9250_SendUart();
 }
 
 /******************************************************************************/

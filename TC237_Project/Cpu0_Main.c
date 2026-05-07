@@ -39,7 +39,8 @@ void core0_main(void)
     /* MPU-9250 초기화 (인터럽트 활성화 후 수행) */
     DrvMpu9250_Init();
 
-    /* Flash에서 캘리브레이션 데이터 복원 */
+    /* TODO: Flash 캘리브레이션 — SPI/IMU 테스트 중 임시 비활성화 */
+#if 0
     if (DrvFlash_LoadCalibration())
     {
         DrvUart_SendString("[CAL] Flash data loaded.\r\n");
@@ -48,10 +49,9 @@ void core0_main(void)
     {
         DrvUart_SendString("[CAL] No saved data, using defaults.\r\n");
     }
+#endif
 
-    DrvUart_SendString("=== TC237 Flash Calibration Demo ===\r\n");
-    DrvUart_SendString("Commands: D=xx, SAVE, LOAD, CAL?\r\n");
-    DrvUart_SendString("Ready.\r\n\r\n");
+    DrvUart_SendString("=== TC237 IMU 3D Viewer ===\r\n");
 
     while (1)
     {
